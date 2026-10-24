@@ -21,7 +21,6 @@
 </head>
 <body data-theme="default">
     <div id="app">
-        <!-- ... [Keep existing UI structure from previous answer] ... -->
         <div class="titlebar">
             <div class="title"><span class="logo"></span>RetroDisk 9.0</div>
             <button class="fs-btn" id="btnFullscreen">⛶ Fullscreen</button>
@@ -145,9 +144,125 @@
     <input type="file" id="zipInput" accept=".zip" hidden>
     <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
 
-    <!-- ... [Keep existing modals: ctx-menu, modal, dlg, prop-modal, webrtc-modal, img-editor-modal, steg-modal, dup-modal, compat-modal, perf-widget] ... -->
+    <div id="ctx-menu">
+        <div class="mi" data-ctx="open">Open</div>
+        <div class="mi" data-ctx="edit">Edit</div>
+        <div class="mi" data-ctx="download">Save to Device</div>
+        <div class="mi" data-ctx="properties">Properties</div>
+        <div class="mi sep"></div>
+        <div class="mi" data-ctx="quickaccess">Pin to Quick Access</div>
+        <div class="mi" data-ctx="tag">Tag Color</div>
+        <div class="mi" data-ctx="img_edit">Edit Image</div>
+        <div class="mi sep"></div>
+        <div class="mi" data-ctx="rename">Rename</div>
+        <div class="mi" data-ctx="batchrename">Batch Rename</div>
+        <div class="mi sep"></div>
+        <div class="mi" data-ctx="delete" style="color:#b03a2a;">Delete</div>
+    </div>
 
-    <!-- NEW: Upload Progress Modal -->
+    <div class="modal-back" id="modal" hidden>
+        <div class="modalwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span><span id="modalTitle">Preview</span></div><div class="winbtns"><button class="close" id="modalClose">✕</button></div></div>
+            <div class="modalbody" id="modalBody"></div>
+            <div class="modalfoot">
+                <div class="info" id="modalInfo"></div>
+                <button class="btn" id="modalSaveAsBtn" hidden>Save As</button>
+                <button class="btn" id="modalSaveBtn" hidden>Save Changes</button>
+                <button class="btn" id="modalDownloadBtn">Download</button>
+                <button class="btn" id="modalOk">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="dlg" hidden>
+        <div class="modalwin dlgwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span><span id="dlgTitle">RetroDisk</span></div><div class="winbtns"><button class="close" id="dlgX">✕</button></div></div>
+            <div class="dlgbody">
+                <label id="dlgLabel"></label>
+                <div id="dlgInputContainer"><input type="text" id="dlgInput" spellcheck="false"></div>
+                <div class="hint" id="dlgHint" hidden></div>
+            </div>
+            <div class="dlgfoot"><button class="btn" id="dlgOk">OK</button><button class="btn" id="dlgCancel">Cancel</button></div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="prop-modal" hidden>
+        <div class="modalwin dlgwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span>Properties</div><div class="winbtns"><button class="close" id="propClose">✕</button></div></div>
+            <div class="dlgbody"><table class="prop-table" id="prop-table"></table></div>
+            <div class="dlgfoot"><button class="btn" id="propOk">Close</button></div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="webrtc-modal" hidden>
+        <div class="modalwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span>WebRTC Local Share</div><div class="winbtns"><button class="close" id="webrtcClose">✕</button></div></div>
+            <div class="dlgbody">
+                <p>Share files directly to another computer on your network.</p>
+                <label>1. Paste remote offer/answer:</label>
+                <textarea class="webrtc-box" id="webrtcInput"></textarea>
+                <div style="display:flex;gap:6px;margin-bottom:10px;">
+                    <button class="btn" id="webrtcGenerate">Generate Offer (Host)</button>
+                    <button class="btn" id="webrtcAccept">Accept Offer (Receiver)</button>
+                </div>
+                <label>2. Your response (copy to other device):</label>
+                <textarea class="webrtc-box" id="webrtcOutput" readonly></textarea>
+            </div>
+            <div class="dlgfoot"><button class="btn" id="webrtcOk">Close</button></div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="img-editor-modal" hidden>
+        <div class="modalwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span>Image Editor</div><div class="winbtns"><button class="close" id="imgClose">✕</button></div></div>
+            <div class="modalbody" style="background:#333;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+                <canvas id="imgCanvas" style="max-width:100%;max-height:60vh;"></canvas>
+            </div>
+            <div class="modalfoot">
+                <button class="btn" id="imgRotate">Rotate 90°</button>
+                <button class="btn" id="imgSave" style="margin-left:auto;">Save &amp; Overwrite</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="steg-modal" hidden>
+        <div class="modalwin dlgwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span>Steganography</div><div class="winbtns"><button class="close" id="stegClose">✕</button></div></div>
+            <div class="dlgbody">
+                <label>Select a PNG Image:</label>
+                <input type="file" id="stegImg" accept="image/png" style="margin-bottom:15px;">
+                <label>Secret Text:</label>
+                <textarea id="stegText" style="height:60px;"></textarea>
+                <div style="display:flex;gap:10px;margin-top:10px;">
+                    <button class="btn" id="stegHide">Hide Text in Image</button>
+                    <button class="btn" id="stegExtract">Extract Text</button>
+                </div>
+            </div>
+            <div class="dlgfoot"><button class="btn" id="stegOk">Close</button></div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="dup-modal" hidden>
+        <div class="modalwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span>Duplicate Finder</div><div class="winbtns"><button class="close" id="dupClose">✕</button></div></div>
+            <div class="modalbody" style="display:block;padding:20px;background:var(--win);">
+                <div id="dup-list">Scanning...</div>
+            </div>
+            <div class="modalfoot">
+                <button class="btn" id="dupClean" style="color:#b03a2a;">Delete Selected Duplicates</button>
+                <button class="btn" id="dupOk" style="margin-left:auto;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="compat-modal" hidden>
+        <div class="modalwin dlgwin" style="width:min(520px,100%)">
+            <div class="titlebar"><div class="title"><span class="logo"></span>System &amp; Browser Info</div><div class="winbtns"><button class="close" id="compatClose">✕</button></div></div>
+            <div class="dlgbody"><div id="compatBody"></div></div>
+            <div class="dlgfoot"><button class="btn" id="compatOk">Close</button></div>
+        </div>
+    </div>
+
     <div class="modal-back" id="upload-progress-modal" hidden>
         <div class="modalwin dlgwin" style="width:420px; text-align:center;">
             <div class="titlebar"><div class="title"><span class="logo"></span>Importing Files</div></div>
@@ -158,6 +273,30 @@
                 </div>
                 <div id="upload-file-name" style="font-size:11px; color:var(--tx-m); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-bottom:10px;">—</div>
                 <div id="upload-stats" style="font-size:10px; color:var(--tx-m);">0 / 0 files processed</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="perf-widget">
+        <div id="perf-btns"><button id="btn-mem">Memory</button><button id="btn-disk">Disk</button></div>
+        <div id="mem-chart" class="chart-box hidden">
+            <div class="chart-header"><span>Memory Usage</span><span id="mem-current-label">0%</span></div>
+            <div class="chart-body"><canvas id="mem-canvas"></canvas></div>
+            <div class="chart-stats">
+                <div class="chart-stat-item"><span>Used</span><b id="mem-used">—</b></div>
+                <div class="chart-stat-item"><span>Limit</span><b id="mem-limit">—</b></div>
+                <div class="chart-stat-item"><span>Peak</span><b id="mem-peak">—</b></div>
+                <div class="chart-stat-item"><span>Avg</span><b id="mem-avg">—</b></div>
+            </div>
+        </div>
+        <div id="disk-chart" class="chart-box hidden">
+            <div class="chart-header"><span>Disk Usage</span><span id="disk-current-label">0%</span></div>
+            <div class="chart-body"><canvas id="disk-canvas"></canvas></div>
+            <div class="chart-stats">
+                <div class="chart-stat-item"><span>Used</span><b id="disk-used">—</b></div>
+                <div class="chart-stat-item"><span>Quota</span><b id="disk-quota">—</b></div>
+                <div class="chart-stat-item"><span>Peak</span><b id="disk-peak">—</b></div>
+                <div class="chart-stat-item"><span>Avg</span><b id="disk-avg">—</b></div>
             </div>
         </div>
     </div>

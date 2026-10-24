@@ -71,12 +71,11 @@
     // =========================================================================
     // Constants & State
     // =========================================================================
-    const DB = 'rd8', V = 1, N = 'n', R = 'r', O = 'opf8', C = 20 * 1024 * 1024, L = 5 * 60 * 1000; // 20 MB chunks
+    const DB = 'rd8', V = 1, N = 'n', R = 'r', O = 'opf8', C = 20 * 1024 * 1024, L = 5 * 60 * 1000;
     let db, opf = null, wkr = null, wkrOK = false;
     let st = { cwd: R, items: [], sel: new Set(), path: [], unlocked: new Set(), isGrid: false, hiddenVolume: false, quickAccess: [] };
     let EST = { usage: 0, quota: 0 }, purls = [], dlgRes = null, dragId = null, sCol = 'name', sAsc = true, sQuery = '', lockT, activeBackend = 'none', webrtcPC = null;
 
-    // Directory & Lock Caches to prevent race conditions
     const dirCache = new Map(); 
     const folderCreationLocks = new Map();
 
@@ -140,12 +139,20 @@
     // =========================================================================
     const processChunkLocal = async ({ chunk, compress, password, salt, algorithm, kdf }) => {
         let buf = chunk;
-        if (compress && window.brotliWasm) {
-            buf = await window.brotliWasm.compress(new Uint8Array(buf));
+        
+        if (compress && window.brotliWasm && typeof window.brotliWasm.compress === 'function') {
+            try {
+                buf = await window.brotliWasm.compress(new Uint8Array(buf));
+            } catch (e) {
+                console.warn("Brotli failed, falling back to Gzip", e);
+                const cs = new CompressionStream('gzip');
+                buf = await new Response(new Blob([buf]).stream().pipeThrough(cs)).arrayBuffer();
+            }
         } else if (compress) {
             const cs = new CompressionStream('gzip');
             buf = await new Response(new Blob([buf]).stream().pipeThrough(cs)).arrayBuffer();
         }
+        
         let encryptedBuf = buf;
         if (password) {
             if (!crypto.subtle) throw new Error('Web Crypto is unavailable.');
@@ -390,7 +397,6 @@
         const baseName = f.name || 'untitled';
         const nameKey = `${pid}::${baseName.toLowerCase()}`;
         
-        // Lock file name collisions
         if (folderCreationLocks.has(nameKey)) {
             await folderCreationLocks.get(nameKey);
         }
@@ -403,7 +409,7 @@
         try {
             n = await uniq(baseName, pid);
             const siblings = await getSiblings(pid);
-            siblings.set(n.toLowerCase(), id); // Reserve the name
+            siblings.set(n.toLowerCase(), id);
         } finally {
             folderCreationLocks.delete(nameKey);
             releaseLock();
@@ -448,8 +454,13 @@
                     b = await crypto.subtle.decrypt({ name: algorithm, iv: new Uint8Array(nd.ivs[i]) }, key, b);
                 }
                 if (nd.compressed) {
-                    if (window.brotliWasm) {
-                        b = await window.brotliWasm.decompress(new Uint8Array(b));
+                    if (window.brotliWasm && typeof window.brotliWasm.decompress === 'function') {
+                        try {
+                            b = await window.brotliWasm.decompress(new Uint8Array(b));
+                        } catch(e) {
+                            const ds = new DecompressionStream('gzip');
+                            b = await new Response(new Blob([b]).stream().pipeThrough(ds)).arrayBuffer();
+                        }
                     } else {
                         const ds = new DecompressionStream('gzip');
                         b = await new Response(new Blob([b]).stream().pipeThrough(ds)).arrayBuffer();
@@ -470,7 +481,7 @@
         if (n) {
             const siblings = await getSiblings(n.parentId);
             if (siblings) siblings.delete(n.name.toLowerCase());
-            dirCache.delete(id); // Invalidate children cache
+            dirCache.delete(id);
         }
     };
 
@@ -551,7 +562,11 @@
         const a = await req(sto(N).getAll());
         const f = a.filter(x => x.kind === 'file'), d = a.filter(x => x.kind === 'folder');
         const cb = a.reduce((x, n) => x + (n.compSize || n.size || 0), 0);
-        if (navigator.storage && navigator.storage.estimate) EST = await navigator.storage.estimate();
+        
+        if (navigator.storage && navigator.storage.estimate) {
+            EST = await navigator.storage.estimate();
+        }
+        
         const q = EST.quota || 0, p = q ? Math.min(100, (cb / q) * 100) : 0;
         if ($('#meterFill')) $('#meterFill').style.width = p + '%';
         if ($('#meterFill')) $('#meterFill').style.background = p > 85 ? '#e79a8c' : p > 60 ? '#f0d27a' : '#96d873';
@@ -725,30 +740,25 @@
                 continue;
             }
 
-            const siblings = await getSiblings(currentId);
-            let folderId = siblings.get(part.toLowerCase());
+            const createPromise = (async () => {
+                const siblings = await getSiblings(currentId);
+                let folderId = siblings.get(part.toLowerCase());
+                if (folderId) return folderId;
+
+                const id = uid();
+                const folder = { id, parentId: currentId, name: part, kind: 'folder', size: 0, compSize: 0, created: Date.now(), modified: Date.now() };
+                await req(sto(N, 'readwrite').add(folder));
+                siblings.set(part.toLowerCase(), id);
+                return id;
+            })();
             
-            if (!folderId) {
-                const createPromise = (async () => {
-                    const sibs = await getSiblings(currentId); 
-                    if (sibs.has(part.toLowerCase())) return sibs.get(part.toLowerCase());
+            folderCreationLocks.set(lockKey, createPromise);
 
-                    const id = uid();
-                    const folder = { id, parentId: currentId, name: part, kind: 'folder', size: 0, compSize: 0, created: Date.now(), modified: Date.now() };
-                    await req(sto(N, 'readwrite').add(folder));
-                    sibs.set(part.toLowerCase(), id);
-                    return id;
-                })();
-
-                folderCreationLocks.set(lockKey, createPromise);
-                
-                try {
-                    folderId = await createPromise;
-                } finally {
-                    folderCreationLocks.delete(lockKey);
-                }
+            try {
+                currentId = await createPromise;
+            } finally {
+                folderCreationLocks.delete(lockKey);
             }
-            currentId = folderId;
         }
         return currentId;
     };
@@ -951,7 +961,7 @@
             <tr><td>Modified</td><td>${fmtDt(n.modified)}</td></tr>
             <tr><td>Encrypted</td><td>${n.encrypted ? `Yes (${n.algorithm || 'AES-GCM'})` : 'No'}</td></tr>
             <tr><td>KDF</td><td>${n.kdf || 'pbkdf2'}</td></tr>
-            <tr><td>Compressed</td><td>${n.compressed ? 'Yes (Brotli/Gzip)' : 'No'}</td></tr>
+            <tr><td>Compressed</td><td>${n.compressed ? 'Yes' : 'No'}</td></tr>
             <tr><td>SHA-256</td><td style="font-family:monospace;word-break:break-all;">${h}</td></tr>
         `;
         $('#prop-modal').hidden = false;
@@ -1051,24 +1061,38 @@
     };
 
     // =========================================================================
-    // Robust Import & Drag-Drop Logic with Parallel Uploads
+    // Robust Import & Drag-Drop Logic with Parallel Uploads & Speed
     // =========================================================================
     let isMarquee = false, mqStart = { x: 0, y: 0 }, mqBox = null;
 
-    const updateProgressUI = (currIdx, total, bytesProcessed, totalBytes, currFile) => {
+    const formatSpeed = (bytes, ms) => {
+        if (ms < 500) return 'Calculating...';
+        const bps = bytes / (ms / 1000);
+        if (bps > 1024 * 1024) return (bps / (1024 * 1024)).toFixed(2) + ' MB/s';
+        if (bps > 1024) return (bps / 1024).toFixed(2) + ' KB/s';
+        return bps.toFixed(0) + ' B/s';
+    };
+
+    const updateProgressUI = (currIdx, total, bytesProcessed, totalBytes, currFile, startTime) => {
         const percent = total === 0 ? 0 : Math.round((currIdx / total) * 100);
+        const speedStr = formatSpeed(bytesProcessed, Date.now() - startTime);
+        
         if ($('#upload-progress-bar')) $('#upload-progress-bar').style.width = percent + '%';
         if ($('#upload-status-text')) $('#upload-status-text').textContent = `Uploading ${currIdx} of ${total} files...`;
         if (currFile && $('#upload-file-name')) $('#upload-file-name').textContent = currFile;
         if ($('#upload-stats')) $('#upload-stats').textContent = `${fmtSz(bytesProcessed)} / ${fmtSz(totalBytes)} (${percent}%)`;
+        if ($('#upload-speed')) $('#upload-speed').textContent = speedStr;
+        
         if ($('#upload-mini-progress-bar')) $('#upload-mini-progress-bar').style.width = percent + '%';
         if (currFile && $('#upload-mini-file-name')) $('#upload-mini-file-name').textContent = currFile;
+        if ($('#upload-mini-speed')) $('#upload-mini-speed').textContent = speedStr;
     };
 
     const imp = async (fs, preservePaths = false) => {
         if (!fs.length) return;
         
         const startDir = st.cwd; 
+        const startTime = Date.now();
         
         let sharedPwd = null, sharedHint = null, sharedRo = false, sharedKdf = 'pbkdf2', sharedAlg = 'AES-GCM';
         if (fs.length > 1) {
@@ -1103,14 +1127,12 @@
         let bytesProcessed = 0, completedCount = 0;
         let failedFiles = [];
         
-        // Skip thumbnails if there are many files (performance optimization)
         const bulk = fs.length > 30;
 
         if (preservePaths) {
             fs.sort((a, b) => (a.webkitRelativePath || '').localeCompare(b.webkitRelativePath || ''));
         }
 
-        // CONCURRENCY LIMIT: Process 3 files simultaneously
         const concurrency = 3;
         let active = 0, index = 0;
 
@@ -1124,7 +1146,7 @@
                 const relPath = (f.webkitRelativePath || '').replace(/\\/g, '/');
                 const displayPath = relPath ? relPath : f.name;
 
-                updateProgressUI(completedCount, fs.length, bytesProcessed, totalBytes, displayPath);
+                updateProgressUI(completedCount, fs.length, bytesProcessed, totalBytes, displayPath, startTime);
                 
                 (async () => {
                     try {
@@ -1147,7 +1169,7 @@
                         active--;
                         completedCount++;
                         bytesProcessed += f.size;
-                        updateProgressUI(completedCount, fs.length, bytesProcessed, totalBytes, displayPath);
+                        updateProgressUI(completedCount, fs.length, bytesProcessed, totalBytes, displayPath, startTime);
                         
                         if (index < fs.length) processQueue();
                         else if (active === 0) {
@@ -1162,7 +1184,7 @@
                             } else {
                                 stat('Upload complete. All files saved successfully.');
                             }
-                            folderCreationLocks.clear(); // Cleanup locks
+                            folderCreationLocks.clear(); 
                         }
                     }
                 })();

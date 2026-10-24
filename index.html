@@ -263,9 +263,15 @@
         </div>
     </div>
 
+    <!-- UPLOAD PROGRESS MODAL (with minimize button) -->
     <div class="modal-back" id="upload-progress-modal" hidden>
         <div class="modalwin dlgwin" style="width:420px; text-align:center;">
-            <div class="titlebar"><div class="title"><span class="logo"></span>Importing Files</div></div>
+            <div class="titlebar">
+                <div class="title"><span class="logo"></span>Importing Files</div>
+                <div class="winbtns">
+                    <button class="btn" id="btnMinimizeUpload" style="padding:0 8px; min-height:20px; font-size:14px; line-height:1;">–</button>
+                </div>
+            </div>
             <div class="dlgbody" style="padding:20px;">
                 <div id="upload-status-text" style="margin-bottom:12px; font-weight:bold;">Preparing files...</div>
                 <div style="height:20px; background:var(--in); border:1px solid var(--in-b); border-radius:3px; overflow:hidden; margin-bottom:10px;">
@@ -275,6 +281,18 @@
                 <div id="upload-stats" style="font-size:10px; color:var(--tx-m);">0 / 0 files processed</div>
             </div>
         </div>
+    </div>
+
+    <!-- MINIMIZED UPLOAD WIDGET (top-right corner) -->
+    <div id="upload-minimized-widget" hidden>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+            <span style="font-weight:bold; font-size:10px; color:var(--tx);">Importing</span>
+            <button class="btn" id="btnRestoreUpload" style="padding:0 6px; min-height:18px; font-size:10px;">Restore</button>
+        </div>
+        <div style="height:8px; background:var(--in); border:1px solid var(--in-b); border-radius:2px; overflow:hidden; margin-bottom:4px;">
+            <div id="upload-mini-progress-bar" style="height:100%; width:0%; background:#4c9a2a; transition:width 0.2s;"></div>
+        </div>
+        <div id="upload-mini-file-name" style="font-size:9px; color:var(--tx-m); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">—</div>
     </div>
 
     <div id="perf-widget">

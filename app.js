@@ -393,6 +393,7 @@
     // =========================================================================
     const render = () => {
         const b = $('#listbody');
+        if (!b) return;
         b.className = 'listbody ' + (st.isGrid ? 'grid' : 'list');
         const l = sQuery ? st.items.filter(n => n.name.toLowerCase().includes(sQuery.toLowerCase())) : st.items;
         l.sort((a, z) => {
@@ -446,34 +447,36 @@
         const cb = a.reduce((x, n) => x + (n.compSize || n.size || 0), 0);
         if (navigator.storage && navigator.storage.estimate) EST = await navigator.storage.estimate();
         const q = EST.quota || 0, p = q ? Math.min(100, (cb / q) * 100) : 0;
-        $('#meterFill').style.width = p + '%';
-        $('#meterFill').style.background = p > 85 ? '#e79a8c' : p > 60 ? '#f0d27a' : '#96d873';
-        $('#sbUsed').textContent = fmtSz(cb);
-        $('#sbQuota').textContent = q ? fmtSz(q) : 'Unlimited';
-        $('#sbCount').textContent = `${f.length} files, ${d.length} folders`;
-        $('#stItems').textContent = st.items.length + ' objects';
+        if ($('#meterFill')) $('#meterFill').style.width = p + '%';
+        if ($('#meterFill')) $('#meterFill').style.background = p > 85 ? '#e79a8c' : p > 60 ? '#f0d27a' : '#96d873';
+        if ($('#sbUsed')) $('#sbUsed').textContent = fmtSz(cb);
+        if ($('#sbQuota')) $('#sbQuota').textContent = q ? fmtSz(q) : 'Unlimited';
+        if ($('#sbCount')) $('#sbCount').textContent = `${f.length} files, ${d.length} folders`;
+        if ($('#stItems')) $('#stItems').textContent = st.items.length + ' objects';
         renderQuick();
     };
 
     const side = () => {
         const n = st.items.filter(i => st.sel.has(i.id)), one = n.length === 1 ? n[0] : null;
-        if (one) {
-            const r = (one.kind === 'file' && one.size) ? Math.round((1 - (one.compSize / one.size)) * 100) : 0;
-            $('#sbSel').innerHTML = `<b>${esc(one.name)}</b><br>${cat(one).label}<br>${one.kind === 'folder' ? '—' : fmtSz(one.size)}${r > 0 ? `<br><span style="color:#4c9a2a">${r}% smaller</span>` : ''}`;
-        } else if (n.length > 1) {
-            $('#sbSel').innerHTML = `<b>${n.length} items</b>`;
-        } else {
-            $('#sbSel').textContent = 'Nothing selected.';
+        if ($('#sbSel')) {
+            if (one) {
+                const r = (one.kind === 'file' && one.size) ? Math.round((1 - (one.compSize / one.size)) * 100) : 0;
+                $('#sbSel').innerHTML = `<b>${esc(one.name)}</b><br>${cat(one).label}<br>${one.kind === 'folder' ? '—' : fmtSz(one.size)}${r > 0 ? `<br><span style="color:#4c9a2a">${r}% smaller</span>` : ''}`;
+            } else if (n.length > 1) {
+                $('#sbSel').innerHTML = `<b>${n.length} items</b>`;
+            } else {
+                $('#sbSel').textContent = 'Nothing selected.';
+            }
         }
         const hf = n.some(i => i.kind === 'file');
-        $('#sbPreview').disabled = !(one && one.kind === 'file');
-        $('#sbDownload').disabled = !hf;
-        $('#tbDownload').disabled = !hf;
-        $('#sbDownloadZip').disabled = !hf;
-        $('#tbDownloadZip').disabled = !hf;
-        $('#sbDelete').disabled = !n.length;
-        $('#tbDelete').disabled = !n.length;
-        $('#stSel').textContent = n.length ? n.length + ' selected' : 'None selected';
+        if ($('#sbPreview')) $('#sbPreview').disabled = !(one && one.kind === 'file');
+        if ($('#sbDownload')) $('#sbDownload').disabled = !hf;
+        if ($('#tbDownload')) $('#tbDownload').disabled = !hf;
+        if ($('#sbDownloadZip')) $('#sbDownloadZip').disabled = !hf;
+        if ($('#tbDownloadZip')) $('#tbDownloadZip').disabled = !hf;
+        if ($('#sbDelete')) $('#sbDelete').disabled = !n.length;
+        if ($('#tbDelete')) $('#tbDelete').disabled = !n.length;
+        if ($('#stSel')) $('#stSel').textContent = n.length ? n.length + ' selected' : 'None selected';
     };
 
     const refresh = async () => {
@@ -486,28 +489,29 @@
         })(st.cwd);
         const ids = new Set(st.items.map(i => i.id));
         st.sel = new Set(Array.from(st.sel).filter(i => ids.has(i)));
-        $('#crumbs').innerHTML = `<span class="cr" data-id="${R}">${st.hiddenVolume ? 'Hidden Volume' : 'My Disk'}</span>` + st.path.map(n => `<span class="sep">▸</span><span class="cr" data-id="${n.id}">${esc(n.name)}</span>`).join('');
+        if ($('#crumbs')) {
+            $('#crumbs').innerHTML = `<span class="cr" data-id="${R}">${st.hiddenVolume ? 'Hidden Volume' : 'My Disk'}</span>` + st.path.map(n => `<span class="sep">▸</span><span class="cr" data-id="${n.id}">${esc(n.name)}</span>`).join('');
+        }
         render();
         await stats();
         side();
     };
 
-    const stat = m => $('#stMsg').textContent = m || 'Ready';
+    const stat = m => { if ($('#stMsg')) $('#stMsg').textContent = m || 'Ready'; };
 
     const dlg = o => new Promise(res => {
         dlgRes = res;
-        $('#dlgTitle').textContent = o.title || 'RetroDisk';
-        $('#dlgLabel').innerHTML = o.label || '';
-        $('#dlgInputContainer').innerHTML = o.input === false ? '' : `<input type="text" id="dlgInput" value="${o.value || ''}">`;
-        $('#dlgHint').textContent = o.hint || '';
-        $('#dlgHint').hidden = !o.hint;
-        $('#dlgOk').textContent = o.okText || 'OK';
-        $('#dlg').hidden = false;
+        if ($('#dlgTitle')) $('#dlgTitle').textContent = o.title || 'RetroDisk';
+        if ($('#dlgLabel')) $('#dlgLabel').innerHTML = o.label || '';
+        if ($('#dlgInputContainer')) $('#dlgInputContainer').innerHTML = o.input === false ? '' : `<input type="text" id="dlgInput" value="${o.value || ''}">`;
+        if ($('#dlgHint')) { $('#dlgHint').textContent = o.hint || ''; $('#dlgHint').hidden = !o.hint; }
+        if ($('#dlgOk')) $('#dlgOk').textContent = o.okText || 'OK';
+        if ($('#dlg')) $('#dlg').hidden = false;
         setTimeout(() => { const inp = $('#dlgInput'); if (inp) inp.focus(); }, 20);
     });
 
     const dlgCl = v => {
-        $('#dlg').hidden = true;
+        if ($('#dlg')) $('#dlg').hidden = true;
         if (dlgRes) { const r = dlgRes; dlgRes = null; r(v); }
     };
 
@@ -784,27 +788,29 @@
                 st.unlocked.add(id);
             }
         }
-        st.cwd = id; st.sel.clear(); sQuery = ''; $('#searchInput').value = '';
+        st.cwd = id; st.sel.clear(); sQuery = ''; if ($('#searchInput')) $('#searchInput').value = '';
         await refresh();
     };
 
     const openImgEditor = async (n, b) => {
-        $('#img-editor-modal').hidden = false;
+        if ($('#img-editor-modal')) $('#img-editor-modal').hidden = false;
         const img = new Image(); img.src = URL.createObjectURL(b);
         await new Promise(r => img.onload = r);
-        const c = $('#imgCanvas'); c.width = img.width; c.height = img.height;
+        const c = $('#imgCanvas'); 
+        if (!c) return;
+        c.width = img.width; c.height = img.height;
         const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
         let rot = 0;
-        $('#imgRotate').onclick = () => {
+        if ($('#imgRotate')) $('#imgRotate').onclick = () => {
             rot = (rot + 90) % 360; c.width = img.height; c.height = img.width;
             ctx.translate(c.width / 2, c.height / 2); ctx.rotate(rot * Math.PI / 180);
             ctx.drawImage(img, -img.width / 2, -img.height / 2);
         };
-        $('#imgSave').onclick = async () => {
+        if ($('#imgSave')) $('#imgSave').onclick = async () => {
             c.toBlob(async (blob) => {
                 const f = new File([blob], n.name, { type: 'image/jpeg' });
                 await del(n.id); await add(f, n.parentId, n.pwdHash);
-                await refresh(); $('#img-editor-modal').hidden = true;
+                await refresh(); if ($('#img-editor-modal')) $('#img-editor-modal').hidden = true;
             }, 'image/jpeg', 0.85);
         };
     };
@@ -874,10 +880,10 @@
 
     const updateProgressUI = (currFile, currIdx, total, bytesProcessed, totalBytes) => {
         const percent = total === 0 ? 0 : Math.round((currIdx / total) * 100);
-        $('#upload-progress-bar').style.width = percent + '%';
-        $('#upload-status-text').textContent = `Uploading ${currIdx + 1} of ${total} files...`;
-        $('#upload-file-name').textContent = currFile;
-        $('#upload-stats').textContent = `${fmtSz(bytesProcessed)} / ${fmtSz(totalBytes)} (${percent}%)`;
+        if ($('#upload-progress-bar')) $('#upload-progress-bar').style.width = percent + '%';
+        if ($('#upload-status-text')) $('#upload-status-text').textContent = `Uploading ${currIdx + 1} of ${total} files...`;
+        if ($('#upload-file-name')) $('#upload-file-name').textContent = currFile;
+        if ($('#upload-stats')) $('#upload-stats').textContent = `${fmtSz(bytesProcessed)} / ${fmtSz(totalBytes)} (${percent}%)`;
     };
 
     const imp = async (fs, preservePaths = false) => {
@@ -893,14 +899,13 @@
         }
 
         const progressModal = $('#upload-progress-modal');
-        progressModal.hidden = false;
+        if (progressModal) progressModal.hidden = false;
         
         let totalBytes = fs.reduce((acc, f) => acc + f.size, 0);
         let bytesProcessed = 0;
         let failedFiles = [];
         const pathCache = new Map();
 
-        // Sort files to group them by path, which reduces database lookups
         if (preservePaths) {
             fs.sort((a, b) => (a.webkitRelativePath || '').localeCompare(b.webkitRelativePath || ''));
         }
@@ -912,7 +917,7 @@
             const displayPath = relPath ? relPath : f.name;
             
             updateProgressUI(displayPath, i, fs.length, bytesProcessed, totalBytes);
-            await yieldUI(); // Allow UI to repaint
+            await yieldUI();
 
             try {
                 if (preservePaths && relPath) {
@@ -934,7 +939,7 @@
             }
         }
 
-        progressModal.hidden = true;
+        if (progressModal) progressModal.hidden = true;
         await refresh();
         
         if (failedFiles.length > 0) {
@@ -948,12 +953,12 @@
     const initWebRTC = () => {
         if (typeof RTCPeerConnection === 'undefined') { alert('WebRTC is not available.'); return; }
         webrtcPC = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-        webrtcPC.onicecandidate = e => { if (e.candidate) $('#webrtcOutput').value += JSON.stringify(e.candidate) + '\n'; };
+        webrtcPC.onicecandidate = e => { if (e.candidate && $('#webrtcOutput')) $('#webrtcOutput').value += JSON.stringify(e.candidate) + '\n'; };
         webrtcPC.ondatachannel = e => { e.channel.onmessage = m => stat('Received: ' + m.data); };
     };
 
     // =========================================================================
-    // Main Event Binds
+    // Main Event Binds (With Null Guards)
     // =========================================================================
     const bind = () => {
         const badge = $('#browserBadge');
@@ -970,31 +975,32 @@
 
         if ($('#btnFullscreen')) $('#btnFullscreen').onclick = toggleFullscreen;
 
-        if ($('#menubar')) {
-            $('#menubar').addEventListener('click', e => {
+        const menubar = $('#menubar');
+        if (menubar) {
+            menubar.addEventListener('click', e => {
                 const t = e.target.closest('.menu-title'), m = e.target.closest('.mi');
                 if (t) {
                     const mu = t.parentElement, w = mu.classList.contains('open');
-                    $('#menubar').querySelectorAll('.menu').forEach(x => x.classList.remove('open'));
+                    menubar.querySelectorAll('.menu').forEach(x => x.classList.remove('open'));
                     if (!w) mu.classList.add('open');
                     e.stopPropagation();
                 } else if (m && act[m.dataset.act]) {
-                    $('#menubar').querySelectorAll('.menu').forEach(x => x.classList.remove('open'));
+                    menubar.querySelectorAll('.menu').forEach(x => x.classList.remove('open'));
                     act[m.dataset.act]();
                 }
             });
         }
 
         document.addEventListener('click', e => {
-            if (!e.target.closest('#menubar')) $('#menubar').querySelectorAll('.menu').forEach(x => x.classList.remove('open'));
-            if (!e.target.closest('#ctx-menu')) $('#ctx-menu').style.display = 'none';
+            if (menubar && !e.target.closest('#menubar')) menubar.querySelectorAll('.menu').forEach(x => x.classList.remove('open'));
+            if (!e.target.closest('#ctx-menu') && $('#ctx-menu')) $('#ctx-menu').style.display = 'none';
             const b = e.target.closest('[data-act]');
-            if (b && !b.closest('#menubar') && act[b.dataset.act] && !b.disabled) act[b.dataset.act]();
+            if (b && (!menubar || !b.closest('#menubar')) && act[b.dataset.act] && !b.disabled) act[b.dataset.act]();
         });
 
         document.addEventListener('contextmenu', e => {
             const r = e.target.closest('.row');
-            if (!r) return;
+            if (!r || !$('#ctx-menu')) return;
             e.preventDefault();
             if (!st.sel.has(r.dataset.id)) { st.sel = new Set([r.dataset.id]); render(); side(); }
             const c = $('#ctx-menu');
@@ -1002,198 +1008,207 @@
             c.style.left = e.pageX + 'px'; c.style.top = e.pageY + 'px';
         });
 
-        $('#ctx-menu').addEventListener('click', async e => {
-            const a = e.target.closest('[data-ctx]')?.dataset.ctx;
-            if (a === 'open') {
-                const n = st.items.find(i => i.id === Array.from(st.sel)[0]);
+        const ctxMenu = $('#ctx-menu');
+        if (ctxMenu) {
+            ctxMenu.addEventListener('click', async e => {
+                const a = e.target.closest('[data-ctx]')?.dataset.ctx;
+                if (a === 'open') {
+                    const n = st.items.find(i => i.id === Array.from(st.sel)[0]);
+                    if (n) n.kind === 'folder' ? nav(n.id) : prev(n);
+                } else if (a === 'properties') showProps();
+                else if (a === 'quickaccess') { Array.from(st.sel).forEach(id => { if (!st.quickAccess.includes(id)) st.quickAccess.push(id); }); renderQuick(); }
+                else if (a === 'tag') {
+                    const col = prompt('Enter color (hex like #ff0000, or "none" to remove):');
+                    if (col) {
+                        for (const id of st.sel) {
+                            const n = st.items.find(i => i.id === id);
+                            if (n) { n.tag = col === 'none' ? null : col; await req(sto(N, 'readwrite').put(n)); }
+                        }
+                        await refresh();
+                    }
+                } else if (a === 'img_edit') {
+                    const n = st.items.find(i => i.id === Array.from(st.sel)[0]);
+                    if (n) ask(n).then(async p => { const b = await getBlob(n, p); if (b) openImgEditor(n, b); });
+                } else if (a === 'batchrename') act.batchrename();
+                else if (act[a]) act[a]();
+                ctxMenu.style.display = 'none';
+            });
+        }
+
+        const listheader = $('#listheader');
+        if (listheader) {
+            listheader.onclick = e => {
+                const c = e.target.closest('.col');
+                if (c && c.dataset.sort) {
+                    sCol === c.dataset.sort ? sAsc = !sAsc : (sCol = c.dataset.sort, sAsc = true);
+                    render();
+                }
+            };
+        }
+
+        const searchInput = $('#searchInput');
+        if (searchInput) {
+            searchInput.oninput = e => { sQuery = e.target.value; refresh(); };
+        }
+
+        const listbody = $('#listbody');
+        if (listbody) {
+            listbody.onclick = e => {
+                if (isMarquee) return;
+                const r = e.target.closest('.row');
+                if (!r) {
+                    if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { st.sel.clear(); render(); side(); }
+                    return;
+                }
+                const id = r.dataset.id;
+                if (e.target.classList.contains('row-chk')) {
+                    if (e.target.checked) st.sel.add(id); else st.sel.delete(id);
+                    render(); side();
+                } else {
+                    if (e.ctrlKey || e.metaKey) st.sel.has(id) ? st.sel.delete(id) : st.sel.add(id);
+                    else st.sel = new Set([id]);
+                    render(); side();
+                }
+            };
+
+            listbody.ondblclick = e => {
+                if (isMarquee || e.target.classList.contains('row-chk')) return;
+                const r = e.target.closest('.row');
+                if (!r) return;
+                const n = st.items.find(i => i.id === r.dataset.id);
                 if (n) n.kind === 'folder' ? nav(n.id) : prev(n);
-            } else if (a === 'properties') showProps();
-            else if (a === 'quickaccess') { Array.from(st.sel).forEach(id => { if (!st.quickAccess.includes(id)) st.quickAccess.push(id); }); renderQuick(); }
-            else if (a === 'tag') {
-                const col = prompt('Enter color (hex like #ff0000, or "none" to remove):');
-                if (col) {
-                    for (const id of st.sel) {
-                        const n = st.items.find(i => i.id === id);
-                        if (n) { n.tag = col === 'none' ? null : col; await req(sto(N, 'readwrite').put(n)); }
-                    }
-                    await refresh();
+            };
+
+            listbody.addEventListener('mousedown', e => {
+                if (e.target.closest('.row') || e.button !== 0) return;
+                isMarquee = true;
+                const rect = listbody.getBoundingClientRect();
+                mqStart = { x: e.clientX - rect.left + listbody.scrollLeft, y: e.clientY - rect.top + listbody.scrollTop };
+                mqBox = document.createElement('div'); mqBox.className = 'marquee-box';
+                Object.assign(mqBox.style, { left: mqStart.x + 'px', top: mqStart.y + 'px', width: '0', height: '0' });
+                listbody.appendChild(mqBox);
+                if (!e.ctrlKey && !e.metaKey) { st.sel.clear(); render(); side(); }
+            });
+
+            window.addEventListener('mousemove', e => {
+                if (!isMarquee || !mqBox) return;
+                const rect = listbody.getBoundingClientRect();
+                const curX = e.clientX - rect.left + listbody.scrollLeft;
+                const curY = e.clientY - rect.top + listbody.scrollTop;
+                const left = Math.min(mqStart.x, curX), top = Math.min(mqStart.y, curY);
+                const width = Math.abs(curX - mqStart.x), height = Math.abs(curY - mqStart.y);
+                Object.assign(mqBox.style, { left: left + 'px', top: top + 'px', width: width + 'px', height: height + 'px' });
+            });
+
+            window.addEventListener('mouseup', e => {
+                if (!isMarquee) return;
+                isMarquee = false;
+                if (mqBox) {
+                    const bRect = mqBox.getBoundingClientRect();
+                    const rows = listbody.querySelectorAll('.row');
+                    rows.forEach(r => {
+                        const rRect = r.getBoundingClientRect();
+                        if (!(bRect.right < rRect.left || bRect.left > rRect.right || bRect.bottom < rRect.top || bRect.top > rRect.bottom)) {
+                            st.sel.add(r.dataset.id);
+                        }
+                    });
+                    mqBox.remove(); mqBox = null;
+                    render(); side();
                 }
-            } else if (a === 'img_edit') {
-                const n = st.items.find(i => i.id === Array.from(st.sel)[0]);
-                if (n) ask(n).then(async p => { const b = await getBlob(n, p); if (b) openImgEditor(n, b); });
-            } else if (a === 'batchrename') act.batchrename();
-            else if (act[a]) act[a]();
-            $('#ctx-menu').style.display = 'none';
-        });
+            });
 
-        $('#listheader').onclick = e => {
-            const c = e.target.closest('.col');
-            if (c && c.dataset.sort) {
-                sCol === c.dataset.sort ? sAsc = !sAsc : (sCol = c.dataset.sort, sAsc = true);
-                render();
-            }
-        };
+            listbody.ondragstart = e => {
+                const r = e.target.closest('.row');
+                if (!r) return e.preventDefault();
+                if (!st.sel.has(r.dataset.id)) {
+                    st.sel = new Set([r.dataset.id]);
+                    render(); side();
+                }
+                dragId = r.dataset.id;
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', JSON.stringify(Array.from(st.sel)));
+                r.style.opacity = '.5';
+            };
 
-        $('#searchInput').oninput = e => { sQuery = e.target.value; refresh(); };
+            listbody.ondragend = e => {
+                const r = e.target.closest('.row');
+                if (r) r.style.opacity = '';
+                dragId = null;
+                listbody.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
+            };
 
-        $('#listbody').onclick = e => {
-            if (isMarquee) return;
-            const r = e.target.closest('.row');
-            if (!r) {
-                if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { st.sel.clear(); render(); side(); }
-                return;
-            }
-            const id = r.dataset.id;
-            if (e.target.classList.contains('row-chk')) {
-                if (e.target.checked) st.sel.add(id); else st.sel.delete(id);
-                render(); side();
-            } else {
-                if (e.ctrlKey || e.metaKey) st.sel.has(id) ? st.sel.delete(id) : st.sel.add(id);
-                else st.sel = new Set([id]);
-                render(); side();
-            }
-        };
+            listbody.ondragover = e => {
+                if (!dragId) return;
+                const r = e.target.closest('.row');
+                if (!r || st.sel.has(r.dataset.id) || st.items.find(i => i.id === r.dataset.id)?.kind !== 'folder') return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                listbody.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
+                r.classList.add('drag-over');
+            };
 
-        $('#listbody').ondblclick = e => {
-            if (isMarquee || e.target.classList.contains('row-chk')) return;
-            const r = e.target.closest('.row');
-            if (!r) return;
-            const n = st.items.find(i => i.id === r.dataset.id);
-            if (n) n.kind === 'folder' ? nav(n.id) : prev(n);
-        };
-
-        // ===== MARQUEE SELECTION =====
-        $('#listbody').addEventListener('mousedown', e => {
-            if (e.target.closest('.row') || e.button !== 0) return;
-            isMarquee = true;
-            const rect = $('#listbody').getBoundingClientRect();
-            mqStart = { x: e.clientX - rect.left + $('#listbody').scrollLeft, y: e.clientY - rect.top + $('#listbody').scrollTop };
-            mqBox = document.createElement('div'); mqBox.className = 'marquee-box';
-            Object.assign(mqBox.style, { left: mqStart.x + 'px', top: mqStart.y + 'px', width: '0', height: '0' });
-            $('#listbody').appendChild(mqBox);
-            if (!e.ctrlKey && !e.metaKey) { st.sel.clear(); render(); side(); }
-        });
-
-        window.addEventListener('mousemove', e => {
-            if (!isMarquee || !mqBox) return;
-            const rect = $('#listbody').getBoundingClientRect();
-            const curX = e.clientX - rect.left + $('#listbody').scrollLeft;
-            const curY = e.clientY - rect.top + $('#listbody').scrollTop;
-            const left = Math.min(mqStart.x, curX), top = Math.min(mqStart.y, curY);
-            const width = Math.abs(curX - mqStart.x), height = Math.abs(curY - mqStart.y);
-            Object.assign(mqBox.style, { left: left + 'px', top: top + 'px', width: width + 'px', height: height + 'px' });
-        });
-
-        window.addEventListener('mouseup', e => {
-            if (!isMarquee) return;
-            isMarquee = false;
-            if (mqBox) {
-                const bRect = mqBox.getBoundingClientRect();
-                const rows = $('#listbody').querySelectorAll('.row');
-                rows.forEach(r => {
-                    const rRect = r.getBoundingClientRect();
-                    if (!(bRect.right < rRect.left || bRect.left > rRect.right || bRect.bottom < rRect.top || bRect.top > rRect.bottom)) {
-                        st.sel.add(r.dataset.id);
-                    }
-                });
-                mqBox.remove(); mqBox = null;
-                render(); side();
-            }
-        });
-
-        // ===== DRAG AND DROP =====
-        $('#listbody').ondragstart = e => {
-            const r = e.target.closest('.row');
-            if (!r) return e.preventDefault();
-            if (!st.sel.has(r.dataset.id)) {
-                st.sel = new Set([r.dataset.id]);
-                render(); side();
-            }
-            dragId = r.dataset.id;
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', JSON.stringify(Array.from(st.sel)));
-            r.style.opacity = '.5';
-        };
-
-        $('#listbody').ondragend = e => {
-            const r = e.target.closest('.row');
-            if (r) r.style.opacity = '';
-            dragId = null;
-            $('#listbody').querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
-        };
-
-        $('#listbody').ondragover = e => {
-            if (!dragId) return;
-            const r = e.target.closest('.row');
-            if (!r || st.sel.has(r.dataset.id) || st.items.find(i => i.id === r.dataset.id)?.kind !== 'folder') return;
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            $('#listbody').querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
-            r.classList.add('drag-over');
-        };
-
-        $('#listbody').ondrop = async e => {
-            const data = e.dataTransfer.getData('text/plain');
-            const r = e.target.closest('.row');
-            dragId = null;
-            $('#listbody').querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
-            if (!r || !data) return;
-            e.preventDefault(); e.stopPropagation();
-            
-            try {
-                const ids = JSON.parse(data);
-                const targetId = r.dataset.id;
-                if (ids.includes(targetId)) return;
+            listbody.ondrop = async e => {
+                const data = e.dataTransfer.getData('text/plain');
+                const r = e.target.closest('.row');
+                dragId = null;
+                listbody.querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
+                if (!r || !data) return;
+                e.preventDefault(); e.stopPropagation();
                 
-                const target = await node(targetId);
-                if (target.kind !== 'folder') return;
+                try {
+                    const ids = JSON.parse(data);
+                    const targetId = r.dataset.id;
+                    if (ids.includes(targetId)) return;
+                    
+                    const target = await node(targetId);
+                    if (target.kind !== 'folder') return;
 
-                for (const id of ids) {
-                    const n = await node(id);
-                    if (n && n.id !== targetId) {
-                        n.parentId = targetId;
-                        n.name = await uniq(n.name, targetId);
-                        await req(sto(N, 'readwrite').put(n));
+                    for (const id of ids) {
+                        const n = await node(id);
+                        if (n && n.id !== targetId) {
+                            n.parentId = targetId;
+                            n.name = await uniq(n.name, targetId);
+                            await req(sto(N, 'readwrite').put(n));
+                        }
                     }
-                }
-                st.sel.clear();
-                await refresh();
-            } catch (err) { }
-        };
+                    st.sel.clear();
+                    await refresh();
+                } catch (err) { }
+            };
 
-        ['dragenter', 'dragover'].forEach(v => $('#listbody').addEventListener(v, e => {
-            if (dragId) return;
-            e.preventDefault();
-            $('#listbody').classList.add('drag');
-        }));
+            ['dragenter', 'dragover'].forEach(v => listbody.addEventListener(v, e => {
+                if (dragId) return;
+                e.preventDefault();
+                listbody.classList.add('drag');
+            }));
 
-        ['dragleave', 'dragend'].forEach(v => $('#listbody').addEventListener(v, e => {
-            if (v === 'dragleave' && $('#listbody').contains(e.relatedTarget)) return;
-            $('#listbody').classList.remove('drag');
-        }));
+            ['dragleave', 'dragend'].forEach(v => listbody.addEventListener(v, e => {
+                if (v === 'dragleave' && listbody.contains(e.relatedTarget)) return;
+                listbody.classList.remove('drag');
+            }));
 
-        $('#listbody').addEventListener('drop', e => {
-            if (dragId) return;
-            e.preventDefault();
-            $('#listbody').classList.remove('drag');
-            if (e.dataTransfer.files.length) imp(Array.from(e.dataTransfer.files));
-        });
+            listbody.addEventListener('drop', e => {
+                if (dragId) return;
+                e.preventDefault();
+                listbody.classList.remove('drag');
+                if (e.dataTransfer.files.length) imp(Array.from(e.dataTransfer.files));
+            });
+        }
 
         window.ondragover = e => e.preventDefault();
         window.ondrop = e => e.preventDefault();
 
-        $('#modalClose').onclick = $('#modalOk').onclick = () => {
-            $('#modal').hidden = true; $('#modalBody').innerHTML = '';
-            purls.forEach(u => URL.revokeObjectURL(u)); purls = [];
-        };
+        if ($('#modalClose')) $('#modalClose').onclick = () => { $('#modal').hidden = true; $('#modalBody').innerHTML = ''; purls.forEach(u => URL.revokeObjectURL(u)); purls = []; };
+        if ($('#modalOk')) $('#modalOk').onclick = () => { $('#modal').hidden = true; $('#modalBody').innerHTML = ''; purls.forEach(u => URL.revokeObjectURL(u)); purls = []; };
 
-        $('#dlgOk').onclick = () => { const i = $('#dlgInput'); if (i) dlgCl(i.value.trim() || null); else dlgCl(true); };
-        $('#dlgCancel').onclick = $('#dlgX').onclick = () => dlgCl(null);
+        if ($('#dlgOk')) $('#dlgOk').onclick = () => { const i = $('#dlgInput'); if (i) dlgCl(i.value.trim() || null); else dlgCl(true); };
+        if ($('#dlgCancel')) $('#dlgCancel').onclick = () => dlgCl(null);
+        if ($('#dlgX')) $('#dlgX').onclick = () => dlgCl(null);
 
-        $('#fileInput').onchange = e => { imp(Array.from(e.target.files)); e.target.value = ''; };
-        $('#folderInput').onchange = e => { imp(Array.from(e.target.files), true); e.target.value = ''; };
+        if ($('#fileInput')) $('#fileInput').onchange = e => { imp(Array.from(e.target.files)); e.target.value = ''; };
+        if ($('#folderInput')) $('#folderInput').onchange = e => { imp(Array.from(e.target.files), true); e.target.value = ''; };
         
-        $('#zipInput').onchange = async e => {
+        if ($('#zipInput')) $('#zipInput').onchange = async e => {
             const f = e.target.files[0];
             if (!f) return;
             try {
@@ -1214,19 +1229,22 @@
             e.target.value = '';
         };
 
-        $('#sbDelete').onclick = act.delete;
-        $('#sbDownload').onclick = act.download;
+        if ($('#sbDelete')) $('#sbDelete').onclick = act.delete;
+        if ($('#sbDownload')) $('#sbDownload').onclick = act.download;
         if ($('#sbDownloadZip')) $('#sbDownloadZip').onclick = act.downloadzip;
-        $('#sbPreview').onclick = () => { const n = st.items.find(i => i.id === Array.from(st.sel)[0]); if (n) prev(n); };
+        if ($('#sbPreview')) $('#sbPreview').onclick = () => { const n = st.items.find(i => i.id === Array.from(st.sel)[0]); if (n) prev(n); };
 
-        $('#propClose').onclick = $('#propOk').onclick = () => $('#prop-modal').hidden = true;
-        $('#webrtcClose').onclick = $('#webrtcOk').onclick = () => $('#webrtc-modal').hidden = true;
-        $('#webrtcGenerate').onclick = async () => { initWebRTC(); if (!webrtcPC) return; webrtcPC.createDataChannel('file'); const offer = await webrtcPC.createOffer(); await webrtcPC.setLocalDescription(offer); $('#webrtcOutput').value = JSON.stringify(offer); };
-        $('#webrtcAccept').onclick = async () => { initWebRTC(); if (!webrtcPC) return; try { const offer = JSON.parse($('#webrtcInput').value); await webrtcPC.setRemoteDescription(offer); const answer = await webrtcPC.createAnswer(); await webrtcPC.setLocalDescription(answer); $('#webrtcOutput').value = JSON.stringify(answer); } catch (err) { alert('Invalid offer JSON.'); } };
+        if ($('#propClose')) $('#propClose').onclick = () => $('#prop-modal').hidden = true;
+        if ($('#propOk')) $('#propOk').onclick = () => $('#prop-modal').hidden = true;
+        if ($('#webrtcClose')) $('#webrtcClose').onclick = () => $('#webrtc-modal').hidden = true;
+        if ($('#webrtcOk')) $('#webrtcOk').onclick = () => $('#webrtc-modal').hidden = true;
+        if ($('#webrtcGenerate')) $('#webrtcGenerate').onclick = async () => { initWebRTC(); if (!webrtcPC) return; webrtcPC.createDataChannel('file'); const offer = await webrtcPC.createOffer(); await webrtcPC.setLocalDescription(offer); $('#webrtcOutput').value = JSON.stringify(offer); };
+        if ($('#webrtcAccept')) $('#webrtcAccept').onclick = async () => { initWebRTC(); if (!webrtcPC) return; try { const offer = JSON.parse($('#webrtcInput').value); await webrtcPC.setRemoteDescription(offer); const answer = await webrtcPC.createAnswer(); await webrtcPC.setLocalDescription(answer); $('#webrtcOutput').value = JSON.stringify(answer); } catch (err) { alert('Invalid offer JSON.'); } };
 
-        $('#imgClose').onclick = () => $('#img-editor-modal').hidden = true;
-        $('#stegClose').onclick = $('#stegOk').onclick = () => $('#steg-modal').hidden = true;
-        $('#stegHide').onclick = async () => {
+        if ($('#imgClose')) $('#imgClose').onclick = () => $('#img-editor-modal').hidden = true;
+        if ($('#stegClose')) $('#stegClose').onclick = () => $('#steg-modal').hidden = true;
+        if ($('#stegOk')) $('#stegOk').onclick = () => $('#steg-modal').hidden = true;
+        if ($('#stegHide')) $('#stegHide').onclick = async () => {
             const file = $('#stegImg').files[0], text = $('#stegText').value;
             if (!file || !text) return alert('Select image and text');
             const img = new Image(); img.src = URL.createObjectURL(file); await new Promise(r => img.onload = r);
@@ -1239,7 +1257,7 @@
             ctx.putImageData(id, 0, 0);
             c.toBlob(async b => { const f = new File([b], 'secret_' + file.name, { type: 'image/png' }); await add(f, st.cwd, null); await refresh(); alert('Image saved!'); }, 'image/png');
         };
-        $('#stegExtract').onclick = async () => {
+        if ($('#stegExtract')) $('#stegExtract').onclick = async () => {
             const file = $('#stegImg').files[0]; if (!file) return alert('Select image');
             const img = new Image(); img.src = URL.createObjectURL(file); await new Promise(r => img.onload = r);
             const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
@@ -1254,8 +1272,9 @@
             alert('Extracted Text:\n' + text);
         };
 
-        $('#dupClose').onclick = $('#dupOk').onclick = () => $('#dup-modal').hidden = true;
-        $('#dupClean').onclick = async () => {
+        if ($('#dupClose')) $('#dupClose').onclick = () => $('#dup-modal').hidden = true;
+        if ($('#dupOk')) $('#dupOk').onclick = () => $('#dup-modal').hidden = true;
+        if ($('#dupClean')) $('#dupClean').onclick = async () => {
             const chks = document.querySelectorAll('.dup-chk:checked'); if (!chks.length) return;
             for (const c of chks) await del(c.value);
             await refresh(); alert('Duplicates deleted!'); $('#dup-modal').hidden = true;
@@ -1272,7 +1291,7 @@
     // =========================================================================
     const initPerfWidget = () => {
         const memBtn = $('#btn-mem'), diskBtn = $('#btn-disk'), memBox = $('#mem-chart'), diskBox = $('#disk-chart');
-        if (!memBtn || !diskBtn) return;
+        if (!memBtn || !diskBtn || !memBox || !diskBox) return;
         let active = null;
         const closeAll = () => { memBox.classList.add('hidden'); diskBox.classList.add('hidden'); active = null; };
         memBtn.onclick = () => { if (active === 'mem') { closeAll(); return; } const o = () => { memBox.classList.remove('hidden'); active = 'mem'; }; if (active) { closeAll(); setTimeout(o, 250); } else o(); };
@@ -1300,20 +1319,22 @@
                 const memByteUsed = hasMem ? performance.memory.usedJSHeapSize : 0;
                 memData.push(memUsed); memData.shift();
                 const peak = Math.max(...memData), avg = memData.reduce((a, b) => a + b, 0) / memData.length;
-                $('#mem-current-label').textContent = hasMem ? Math.round(memUsed * 100) + '%' : 'N/A';
-                $('#mem-used').textContent = hasMem ? fmtSz(memByteUsed) : 'N/A';
-                $('#mem-limit').textContent = hasMem ? fmtSz(memLimit) : 'N/A';
-                $('#mem-peak').textContent = hasMem ? Math.round(peak * 100) + '%' : 'N/A';
-                $('#mem-avg').textContent = hasMem ? Math.round(avg * 100) + '%' : 'N/A';
+                if ($('#mem-current-label')) $('#mem-current-label').textContent = hasMem ? Math.round(memUsed * 100) + '%' : 'N/A';
+                if ($('#mem-used')) $('#mem-used').textContent = hasMem ? fmtSz(memByteUsed) : 'N/A';
+                if ($('#mem-limit')) $('#mem-limit').textContent = hasMem ? fmtSz(memLimit) : 'N/A';
+                if ($('#mem-peak')) $('#mem-peak').textContent = hasMem ? Math.round(peak * 100) + '%' : 'N/A';
+                if ($('#mem-avg')) $('#mem-avg').textContent = hasMem ? Math.round(avg * 100) + '%' : 'N/A';
                 draw(memCtx, memData, getComputedStyle(document.documentElement).getPropertyValue('--chart-line-mem').trim());
             }
             if (!diskBox.classList.contains('hidden') && navigator.storage && navigator.storage.estimate) {
                 navigator.storage.estimate().then(est => {
                     const diskUsed = est.usage / est.quota; diskData.push(diskUsed); diskData.shift();
                     const peak = Math.max(...diskData), avg = diskData.reduce((a, b) => a + b, 0) / diskData.length;
-                    $('#disk-current-label').textContent = Math.round(diskUsed * 100) + '%';
-                    $('#disk-used').textContent = fmtSz(est.usage); $('#disk-quota').textContent = fmtSz(est.quota);
-                    $('#disk-peak').textContent = Math.round(peak * 100) + '%'; $('#disk-avg').textContent = Math.round(avg * 100) + '%';
+                    if ($('#disk-current-label')) $('#disk-current-label').textContent = Math.round(diskUsed * 100) + '%';
+                    if ($('#disk-used')) $('#disk-used').textContent = fmtSz(est.usage); 
+                    if ($('#disk-quota')) $('#disk-quota').textContent = fmtSz(est.quota);
+                    if ($('#disk-peak')) $('#disk-peak').textContent = Math.round(peak * 100) + '%'; 
+                    if ($('#disk-avg')) $('#disk-avg').textContent = Math.round(avg * 100) + '%';
                     draw(diskCtx, diskData, getComputedStyle(document.documentElement).getPropertyValue('--chart-line-disk').trim());
                 });
             }
@@ -1347,7 +1368,7 @@
         }
     } catch (e) {
         console.error(e);
-        $('#listbody').innerHTML = '<div class="empty">Critical Error: Failed to mount storage. ' + esc(e.message) + '</div>';
+        if ($('#listbody')) $('#listbody').innerHTML = '<div class="empty">Critical Error: Failed to mount storage. ' + esc(e.message) + '</div>';
         stat('Error mounting storage.');
     }
 })();

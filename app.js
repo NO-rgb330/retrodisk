@@ -59,7 +59,7 @@
     // =========================================================================
     // Constants & helpers
     // =========================================================================
-    const DB = 'rd8', V = 1, N = 'n', R = 'r', O = 'opf8', C = 5 * 1024 * 1024, L = 5 * 60 * 1000;
+    const DB = 'rd8', V = 1, N = 'n', R = 'r', O = 'opf8', C = 20 * 1024 * 1024, L = 5 * 60 * 1000; // C increased to 20 MB
     let db, opf = null, wkr = null, wkrOK = false;
     let st = { cwd: R, items: [], sel: new Set(), path: [], unlocked: new Set(), isGrid: false, hiddenVolume: false, quickAccess: [] };
     let EST = { usage: 0, quota: 0 }, purls = [], dlgRes = null, dragId = null, sCol = 'name', sAsc = true, sQuery = '', lockT, activeBackend = 'none', webrtcPC = null;
@@ -283,7 +283,9 @@
     };
 
     const proc = async (file, pwd, algorithm, kdf) => {
-        const tot = Math.ceil(file.size / C), comp = file.size < 100 * 1024 * 1024 && (file.type.startsWith('text/') || file.type === 'application/json');
+        const tot = Math.ceil(file.size / C);
+        // Optimization: only compress text-like files under 100 MB
+        const comp = file.size < 100 * 1024 * 1024 && (file.type.startsWith('text/') || file.type === 'application/json');
         const salt = crypto.getRandomValues(new Uint8Array(16));
         const cs = [], ivs = [], id = uid();
 
@@ -874,16 +876,21 @@
     };
 
     // =========================================================================
-    // Robust Import & Drag-Drop Logic with Progress
+    // Robust Import & Drag-Drop Logic with Progress (Minimizable)
     // =========================================================================
     let isMarquee = false, mqStart = { x: 0, y: 0 }, mqBox = null;
 
     const updateProgressUI = (currFile, currIdx, total, bytesProcessed, totalBytes) => {
         const percent = total === 0 ? 0 : Math.round((currIdx / total) * 100);
+        // Update full modal
         if ($('#upload-progress-bar')) $('#upload-progress-bar').style.width = percent + '%';
         if ($('#upload-status-text')) $('#upload-status-text').textContent = `Uploading ${currIdx + 1} of ${total} files...`;
         if ($('#upload-file-name')) $('#upload-file-name').textContent = currFile;
         if ($('#upload-stats')) $('#upload-stats').textContent = `${fmtSz(bytesProcessed)} / ${fmtSz(totalBytes)} (${percent}%)`;
+        
+        // Update minimized widget
+        if ($('#upload-mini-progress-bar')) $('#upload-mini-progress-bar').style.width = percent + '%';
+        if ($('#upload-mini-file-name')) $('#upload-mini-file-name').textContent = currFile;
     };
 
     const imp = async (fs, preservePaths = false) => {
@@ -899,8 +906,26 @@
         }
 
         const progressModal = $('#upload-progress-modal');
+        const miniWidget = $('#upload-minimized-widget');
         if (progressModal) progressModal.hidden = false;
-        
+        if (miniWidget) miniWidget.hidden = true;
+
+        // Bind minimize/restore buttons dynamically (to avoid duplicates)
+        const btnMinimize = $('#btnMinimizeUpload');
+        const btnRestore = $('#btnRestoreUpload');
+        if (btnMinimize) {
+            btnMinimize.onclick = () => {
+                if (progressModal) progressModal.hidden = true;
+                if (miniWidget) miniWidget.hidden = false;
+            };
+        }
+        if (btnRestore) {
+            btnRestore.onclick = () => {
+                if (miniWidget) miniWidget.hidden = true;
+                if (progressModal) progressModal.hidden = false;
+            };
+        }
+
         let totalBytes = fs.reduce((acc, f) => acc + f.size, 0);
         let bytesProcessed = 0;
         let failedFiles = [];
@@ -940,6 +965,7 @@
         }
 
         if (progressModal) progressModal.hidden = true;
+        if (miniWidget) miniWidget.hidden = true;
         await refresh();
         
         if (failedFiles.length > 0) {

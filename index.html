@@ -3,13 +3,14 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="description" content="RetroDisk 9.0 — a private, offline-capable retro virtual file system that runs entirely in your browser.">
     <title>RetroDisk 9.0</title>
-    
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.12.0/styles/atom-one-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.12.0/highlight.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.3/umd/index.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+
     <link rel="stylesheet" href="style.css">
 </head>
 <body data-theme="default">
@@ -18,12 +19,13 @@
             <div class="title"><span class="logo"></span>RetroDisk 9.0</div>
             <button class="fs-btn" id="btnFullscreen">⛶ Fullscreen</button>
         </div>
-        
+
         <div class="menubar" id="menubar">
             <div class="menu">
                 <span class="menu-title">File</span>
                 <div class="dropdown">
                     <div class="mi" data-act="upload">Upload Files…</div>
+                    <div class="mi" data-act="uploadfolder">Upload Folder…</div>
                     <div class="mi" data-act="newfolder">New Folder</div>
                     <div class="mi sep"></div>
                     <div class="mi" data-act="extractzip">Extract ZIP…</div>
@@ -64,11 +66,12 @@
                 </div>
             </div>
         </div>
-        
+
         <div class="toolbar">
             <button class="btn" data-act="up" id="btnUp">Up</button>
             <div class="tsep"></div>
-            <button class="btn" data-act="upload">Upload</button>
+            <button class="btn" data-act="upload">Upload Files</button>
+            <button class="btn" data-act="uploadfolder">Upload Folder</button>
             <button class="btn" data-act="newfolder">New Folder</button>
             <div class="tsep"></div>
             <button class="btn" data-act="download" id="tbDownload" disabled>Save</button>
@@ -79,15 +82,16 @@
             <input type="text" class="searchbox" id="searchInput" placeholder="Search...">
             <span id="backendBadge" style="margin-left:12px;padding:2px 8px;border-radius:3px;background:#e0e0e0;color:#1b1b1b;font-size:10px;font-weight:bold;" title="Active storage backend">Backend: ...</span>
         </div>
-        
+
         <div class="addressbar">
             <span style="color:var(--tx-m);">Address</span>
             <div class="crumbs" id="crumbs"></div>
         </div>
-        
+
         <div class="body">
             <div class="pane">
                 <div class="listheader" id="listheader">
+                    <div class="col chk"></div>
                     <div class="col" data-sort="name">Name <span class="sort-arrow">▲</span></div>
                     <div class="col" data-sort="type">Type <span class="sort-arrow"></span></div>
                     <div class="col" data-sort="size">Size <span class="sort-arrow"></span></div>
@@ -95,7 +99,7 @@
                 </div>
                 <div class="listbody list" id="listbody"></div>
             </div>
-            
+
             <aside class="sidebar">
                 <div class="panel">
                     <h3>Quick Access</h3>
@@ -121,16 +125,18 @@
                 </div>
             </aside>
         </div>
-        
+
         <div class="statusbar">
             <div class="cell" id="stItems">0 objects</div>
             <div class="cell" id="stSel">None selected</div>
+            <div class="cell browser-badge" id="browserBadge" title="Browser &amp; capability info">Browser</div>
             <div class="cell grow" id="stMsg">Ready</div>
         </div>
     </div>
 
     <input type="file" id="fileInput" multiple hidden>
     <input type="file" id="zipInput" accept=".zip" hidden>
+    <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
 
     <div id="ctx-menu">
         <div class="mi" data-ctx="open">Open</div>
@@ -140,7 +146,7 @@
         <div class="mi sep"></div>
         <div class="mi" data-ctx="quickaccess">Pin to Quick Access</div>
         <div class="mi" data-ctx="tag">Tag Color</div>
-        <div class="mi" data-ctx="img_edit">Edit Image</div> <!-- NEW: Image Editor -->
+        <div class="mi" data-ctx="img_edit">Edit Image</div>
         <div class="mi sep"></div>
         <div class="mi" data-ctx="rename">Rename</div>
         <div class="mi" data-ctx="batchrename">Batch Rename</div>
@@ -200,7 +206,6 @@
         </div>
     </div>
 
-    <!-- NEW: Image Editor Modal -->
     <div class="modal-back" id="img-editor-modal" hidden>
         <div class="modalwin">
             <div class="titlebar"><div class="title"><span class="logo"></span>Image Editor</div><div class="winbtns"><button class="close" id="imgClose">✕</button></div></div>
@@ -209,12 +214,11 @@
             </div>
             <div class="modalfoot">
                 <button class="btn" id="imgRotate">Rotate 90°</button>
-                <button class="btn" id="imgSave" style="margin-left:auto;">Save & Overwrite</button>
+                <button class="btn" id="imgSave" style="margin-left:auto;">Save &amp; Overwrite</button>
             </div>
         </div>
     </div>
 
-    <!-- NEW: Steganography Modal -->
     <div class="modal-back" id="steg-modal" hidden>
         <div class="modalwin dlgwin">
             <div class="titlebar"><div class="title"><span class="logo"></span>Steganography</div><div class="winbtns"><button class="close" id="stegClose">✕</button></div></div>
@@ -232,7 +236,6 @@
         </div>
     </div>
 
-    <!-- NEW: Duplicate Finder Modal -->
     <div class="modal-back" id="dup-modal" hidden>
         <div class="modalwin">
             <div class="titlebar"><div class="title"><span class="logo"></span>Duplicate Finder</div><div class="winbtns"><button class="close" id="dupClose">✕</button></div></div>
@@ -243,6 +246,14 @@
                 <button class="btn" id="dupClean" style="color:#b03a2a;">Delete Selected Duplicates</button>
                 <button class="btn" id="dupOk" style="margin-left:auto;">Close</button>
             </div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="compat-modal" hidden>
+        <div class="modalwin dlgwin" style="width:min(520px,100%)">
+            <div class="titlebar"><div class="title"><span class="logo"></span>System &amp; Browser Info</div><div class="winbtns"><button class="close" id="compatClose">✕</button></div></div>
+            <div class="dlgbody"><div id="compatBody"></div></div>
+            <div class="dlgfoot"><button class="btn" id="compatOk">Close</button></div>
         </div>
     </div>
 

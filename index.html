@@ -6,12 +6,20 @@
     <meta name="description" content="RetroDisk 9.0 — a private, offline-capable retro virtual file system.">
     <title>RetroDisk 9.0</title>
 
+    <!-- Highlight.js for text preview -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    
+    <!-- Fflate for ZIP operations -->
     <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+    
+    <!-- Marked for Markdown preview -->
     <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
     
+    <!-- Argon2 for enhanced key derivation -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/argon2-browser/1.18.0/argon2-bundled.min.js"></script>
+    
+    <!-- Brotli WASM for superior text compression -->
     <script type="module">
         import brotli from 'https://cdn.jsdelivr.net/npm/brotli-wasm@3.0.1/index.web.js?module';
         window.brotliWasm = brotli;
@@ -20,6 +28,9 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body data-theme="default">
+    <!-- Custom Retro Cursor -->
+    <div id="custom-cursor"></div>
+
     <div id="app">
         <div class="titlebar">
             <div class="title"><span class="logo"></span>RetroDisk 9.0</div>
@@ -140,10 +151,12 @@
         </div>
     </div>
 
+    <!-- Hidden File Inputs -->
     <input type="file" id="fileInput" multiple hidden>
     <input type="file" id="zipInput" accept=".zip" hidden>
     <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
 
+    <!-- Context Menu -->
     <div id="ctx-menu">
         <div class="mi" data-ctx="open">Open</div>
         <div class="mi" data-ctx="edit">Edit</div>
@@ -160,6 +173,7 @@
         <div class="mi" data-ctx="delete" style="color:#b03a2a;">Delete</div>
     </div>
 
+    <!-- Main Preview Modal -->
     <div class="modal-back" id="modal" hidden>
         <div class="modalwin">
             <div class="titlebar"><div class="title"><span class="logo"></span><span id="modalTitle">Preview</span></div><div class="winbtns"><button class="close" id="modalClose">✕</button></div></div>
@@ -174,6 +188,7 @@
         </div>
     </div>
 
+    <!-- Dialog Modal -->
     <div class="modal-back" id="dlg" hidden>
         <div class="modalwin dlgwin">
             <div class="titlebar"><div class="title"><span class="logo"></span><span id="dlgTitle">RetroDisk</span></div><div class="winbtns"><button class="close" id="dlgX">✕</button></div></div>
@@ -186,6 +201,7 @@
         </div>
     </div>
 
+    <!-- Properties Modal -->
     <div class="modal-back" id="prop-modal" hidden>
         <div class="modalwin dlgwin">
             <div class="titlebar"><div class="title"><span class="logo"></span>Properties</div><div class="winbtns"><button class="close" id="propClose">✕</button></div></div>
@@ -194,6 +210,7 @@
         </div>
     </div>
 
+    <!-- WebRTC Modal -->
     <div class="modal-back" id="webrtc-modal" hidden>
         <div class="modalwin">
             <div class="titlebar"><div class="title"><span class="logo"></span>WebRTC Local Share</div><div class="winbtns"><button class="close" id="webrtcClose">✕</button></div></div>
@@ -212,6 +229,7 @@
         </div>
     </div>
 
+    <!-- Image Editor Modal -->
     <div class="modal-back" id="img-editor-modal" hidden>
         <div class="modalwin">
             <div class="titlebar"><div class="title"><span class="logo"></span>Image Editor</div><div class="winbtns"><button class="close" id="imgClose">✕</button></div></div>
@@ -225,6 +243,7 @@
         </div>
     </div>
 
+    <!-- Steganography Modal -->
     <div class="modal-back" id="steg-modal" hidden>
         <div class="modalwin dlgwin">
             <div class="titlebar"><div class="title"><span class="logo"></span>Steganography</div><div class="winbtns"><button class="close" id="stegClose">✕</button></div></div>
@@ -242,6 +261,7 @@
         </div>
     </div>
 
+    <!-- Duplicate Finder Modal -->
     <div class="modal-back" id="dup-modal" hidden>
         <div class="modalwin">
             <div class="titlebar"><div class="title"><span class="logo"></span>Duplicate Finder</div><div class="winbtns"><button class="close" id="dupClose">✕</button></div></div>
@@ -255,6 +275,7 @@
         </div>
     </div>
 
+    <!-- System Info Modal -->
     <div class="modal-back" id="compat-modal" hidden>
         <div class="modalwin dlgwin" style="width:min(520px,100%)">
             <div class="titlebar"><div class="title"><span class="logo"></span>System &amp; Browser Info</div><div class="winbtns"><button class="close" id="compatClose">✕</button></div></div>
@@ -263,7 +284,7 @@
         </div>
     </div>
 
-    <!-- UPLOAD PROGRESS MODAL (with minimize button) -->
+    <!-- Upload Progress Modal -->
     <div class="modal-back" id="upload-progress-modal" hidden>
         <div class="modalwin dlgwin" style="width:420px; text-align:center;">
             <div class="titlebar">
@@ -283,7 +304,7 @@
         </div>
     </div>
 
-    <!-- MINIMIZED UPLOAD WIDGET (top-right corner) -->
+    <!-- Minimized Upload Widget -->
     <div id="upload-minimized-widget" hidden>
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
             <span style="font-weight:bold; font-size:10px; color:var(--tx);">Importing</span>
@@ -295,6 +316,7 @@
         <div id="upload-mini-file-name" style="font-size:9px; color:var(--tx-m); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">—</div>
     </div>
 
+    <!-- Performance Widget -->
     <div id="perf-widget">
         <div id="perf-btns"><button id="btn-mem">Memory</button><button id="btn-disk">Disk</button></div>
         <div id="mem-chart" class="chart-box hidden">

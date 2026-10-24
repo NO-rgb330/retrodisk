@@ -30,7 +30,7 @@
     const browserInfo = detectBrowser();
 
     // =========================================================================
-    // Core Helpers (Defined early to prevent hoisting issues)
+    // Core Helpers
     // =========================================================================
     const $ = s => document.querySelector(s);
     const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -51,9 +51,6 @@
         chacha: !!(crypto.subtle && crypto.subtle.encrypt && crypto.subtle.encrypt({ name: 'ChaCha20-Poly1305' }, { name: 'ChaCha20-Poly1305' }, new Uint8Array(0)).catch(() => true))
     });
 
-    // =========================================================================
-    // DIALOGS & SYSTEM INFO (Defined BEFORE bind)
-    // =========================================================================
     function showCompatInfo() {
         const modal = $('#compat-modal'), body = $('#compatBody');
         if (!modal || !body) return;
@@ -79,7 +76,9 @@
     let st = { cwd: R, items: [], sel: new Set(), path: [], unlocked: new Set(), isGrid: false, hiddenVolume: false, quickAccess: [] };
     let EST = { usage: 0, quota: 0 }, purls = [], dlgRes = null, dragId = null, sCol = 'name', sAsc = true, sQuery = '', lockT, activeBackend = 'none', webrtcPC = null;
 
+    // Directory & Lock Caches to prevent race conditions
     const dirCache = new Map(); 
+    const folderCreationLocks = new Map();
 
     const uid = () => 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
     const req = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
@@ -122,28 +121,13 @@
         applyTheme(saved || def, false);
     };
 
-    // =========================================================================
-    // CUSTOM RETRO CURSOR LOGIC
-    // =========================================================================
     const initCursor = () => {
         const cursor = $('#custom-cursor');
         if (!cursor) return;
-        
-        const updatePos = (x, y) => {
-            cursor.style.left = x + 'px';
-            cursor.style.top = y + 'px';
-        };
-        
+        const updatePos = (x, y) => { cursor.style.left = x + 'px'; cursor.style.top = y + 'px'; };
         window.addEventListener('mousemove', e => updatePos(e.clientX, e.clientY));
-        
-        window.addEventListener('mousedown', () => {
-            cursor.classList.add('clicking');
-        });
-        
-        window.addEventListener('mouseup', () => {
-            cursor.classList.remove('clicking');
-        });
-        
+        window.addEventListener('mousedown', () => cursor.classList.add('clicking'));
+        window.addEventListener('mouseup', () => cursor.classList.remove('clicking'));
         window.addEventListener('mouseover', e => {
             const isInteractive = e.target.closest('button, .btn, .row, .mi, .cr, .quick-item, input, select, textarea, .col[data-sort], .winbtns button');
             if (isInteractive) cursor.classList.add('pointer');
@@ -152,7 +136,7 @@
     };
 
     // =========================================================================
-    // Worker logic (ULTRA-FAST OPFS)
+    // Worker Logic
     // =========================================================================
     const processChunkLocal = async ({ chunk, compress, password, salt, algorithm, kdf }) => {
         let buf = chunk;
@@ -280,12 +264,15 @@
     const node = id => id === R ? Promise.resolve({ id: R, name: 'My Disk', kind: 'folder', parentId: null }) : req(sto(N).get(id));
 
     const getSiblings = async (pid) => {
-        if (dirCache.has(pid)) return dirCache.get(pid);
-        const arr = await list(pid);
-        const map = new Map();
-        arr.forEach(n => map.set(n.name.toLowerCase(), n.id));
-        dirCache.set(pid, map);
-        return map;
+        if (!dirCache.has(pid)) {
+            dirCache.set(pid, (async () => {
+                const arr = await list(pid);
+                const map = new Map();
+                arr.forEach(n => map.set(n.name.toLowerCase(), n.id));
+                return map;
+            })());
+        }
+        return await dirCache.get(pid);
     };
 
     const uniq = async (n, pid, ex) => {
@@ -345,11 +332,11 @@
         }
     };
 
-    const proc = async (file, pwd, algorithm, kdf) => {
+    const proc = async (file, pwd, algorithm, kdf, id) => {
         const tot = Math.ceil(file.size / C);
         const comp = file.size < 100 * 1024 * 1024 && (file.type.startsWith('text/') || file.type === 'application/json');
         const salt = crypto.getRandomValues(new Uint8Array(16));
-        const cs = [], ivs = [], id = uid();
+        const cs = [], ivs = [];
 
         let writ = null;
         let chunks = [];
@@ -399,11 +386,32 @@
     };
 
     const add = async (f, pid, pwd, algorithm = 'AES-GCM', kdf = 'pbkdf2', bulk = false) => {
-        const id = uid(), n = await uniq(f.name || 'untitled', pid);
+        const id = uid();
+        const baseName = f.name || 'untitled';
+        const nameKey = `${pid}::${baseName.toLowerCase()}`;
+        
+        // Lock file name collisions
+        if (folderCreationLocks.has(nameKey)) {
+            await folderCreationLocks.get(nameKey);
+        }
+        
+        let releaseLock;
+        const lock = new Promise(r => releaseLock = r);
+        folderCreationLocks.set(nameKey, lock);
+        
+        let n;
+        try {
+            n = await uniq(baseName, pid);
+            const siblings = await getSiblings(pid);
+            siblings.set(n.toLowerCase(), id); // Reserve the name
+        } finally {
+            folderCreationLocks.delete(nameKey);
+            releaseLock();
+        }
         
         const th = (pwd || bulk) ? null : await thumb(f, f.type.startsWith('video/') ? 'video' : 'image');
+        const m = await proc(f, pwd, algorithm, kdf, id); 
         
-        const m = await proc(f, pwd, algorithm, kdf);
         const nd = {
             id: m.id, parentId: pid, name: n, kind: 'file', mime: f.type || 'application/octet-stream',
             size: f.size, compSize: m.cs.reduce((a, b) => a + b, 0), compressed: m.comp,
@@ -462,10 +470,14 @@
         if (n) {
             const siblings = await getSiblings(n.parentId);
             if (siblings) siblings.delete(n.name.toLowerCase());
+            dirCache.delete(id); // Invalidate children cache
         }
     };
 
     const shredNode = async id => {
+        const k = await list(id);
+        for (const c of k) await shredNode(c.id);
+
         const n = await node(id);
         if (n && n.kind === 'file') {
             for (let i = 0; i < 3; i++) {
@@ -475,8 +487,11 @@
             await deleteBlob(id);
         }
         await req(sto(N, 'readwrite').delete(id));
-        const k = await list(id);
-        for (const c of k) await shredNode(c.id);
+        if (n) {
+            const siblings = await getSiblings(n.parentId);
+            if (siblings) siblings.delete(n.name.toLowerCase());
+            dirCache.delete(id);
+        }
     };
 
     // =========================================================================
@@ -703,13 +718,35 @@
         const parts = pathStr.replace(/\\/g, '/').split('/').filter(p => p && p !== '.' && p !== '..');
         let currentId = parentId;
         for (const part of parts) {
+            const lockKey = `${currentId}::${part.toLowerCase()}`;
+            
+            if (folderCreationLocks.has(lockKey)) {
+                currentId = await folderCreationLocks.get(lockKey);
+                continue;
+            }
+
             const siblings = await getSiblings(currentId);
             let folderId = siblings.get(part.toLowerCase());
+            
             if (!folderId) {
-                folderId = uid();
-                const folder = { id: folderId, parentId: currentId, name: part, kind: 'folder', size: 0, compSize: 0, created: Date.now(), modified: Date.now() };
-                await req(sto(N, 'readwrite').add(folder));
-                siblings.set(part.toLowerCase(), folderId);
+                const createPromise = (async () => {
+                    const sibs = await getSiblings(currentId); 
+                    if (sibs.has(part.toLowerCase())) return sibs.get(part.toLowerCase());
+
+                    const id = uid();
+                    const folder = { id, parentId: currentId, name: part, kind: 'folder', size: 0, compSize: 0, created: Date.now(), modified: Date.now() };
+                    await req(sto(N, 'readwrite').add(folder));
+                    sibs.set(part.toLowerCase(), id);
+                    return id;
+                })();
+
+                folderCreationLocks.set(lockKey, createPromise);
+                
+                try {
+                    folderId = await createPromise;
+                } finally {
+                    folderCreationLocks.delete(lockKey);
+                }
             }
             currentId = folderId;
         }
@@ -719,10 +756,34 @@
     const act = {
         upload: () => $('#fileInput').click(),
         uploadfolder: () => $('#folderInput').click(),
-        newfolder: () => dlg({ title: 'New Folder', label: 'Name:', value: 'New Folder' }).then(async n => {
-            if (!n) return;
-            const nd = { id: uid(), parentId: st.cwd, name: await uniq(n, st.cwd), kind: 'folder', size: 0, compSize: 0, created: Date.now(), modified: Date.now() };
+        newfolder: () => dlg({ title: 'New Folder', label: 'Name:', value: 'New Folder' }).then(async baseName => {
+            if (!baseName) return;
+            
+            const nameKey = `${st.cwd}::${baseName.toLowerCase()}`;
+            if (folderCreationLocks.has(nameKey)) {
+                await folderCreationLocks.get(nameKey);
+            }
+            let releaseLock;
+            const lock = new Promise(r => releaseLock = r);
+            folderCreationLocks.set(nameKey, lock);
+            
+            let name;
+            try {
+                name = await uniq(baseName, st.cwd);
+                const siblings = await getSiblings(st.cwd);
+                siblings.set(name.toLowerCase(), 'pending');
+            } finally {
+                folderCreationLocks.delete(nameKey);
+                releaseLock();
+            }
+            
+            const id = uid();
+            const nd = { id, parentId: st.cwd, name, kind: 'folder', size: 0, compSize: 0, created: Date.now(), modified: Date.now() };
             await req(sto(N, 'readwrite').add(nd));
+            
+            const siblings = await getSiblings(st.cwd);
+            siblings.set(name.toLowerCase(), id);
+            
             await refresh();
         }),
         extractzip: () => $('#zipInput').click(),
@@ -757,8 +818,28 @@
                     const n = st.items.find(x => x.id === ids[i]);
                     if (!n) continue;
                     const e = n.name.includes('.') ? n.name.slice(n.name.lastIndexOf('.')) : '';
-                    n.name = p + String(i + 1).padStart(2, '0') + e;
-                    await req(sto(N, 'readwrite').put(n));
+                    const baseName = p + String(i + 1).padStart(2, '0') + e;
+                    
+                    const nameKey = `${n.parentId}::${baseName.toLowerCase()}`;
+                    if (folderCreationLocks.has(nameKey)) {
+                        await folderCreationLocks.get(nameKey);
+                    }
+                    let releaseLock;
+                    const lock = new Promise(r => releaseLock = r);
+                    folderCreationLocks.set(nameKey, lock);
+                    
+                    try {
+                        const oldName = n.name;
+                        n.name = await uniq(baseName, n.parentId, n.id);
+                        await req(sto(N, 'readwrite').put(n));
+                        
+                        const siblings = await getSiblings(n.parentId);
+                        siblings.delete(oldName.toLowerCase());
+                        siblings.set(n.name.toLowerCase(), n.id);
+                    } finally {
+                        folderCreationLocks.delete(nameKey);
+                        releaseLock();
+                    }
                 }
                 await refresh();
             });
@@ -769,7 +850,7 @@
             dlg({ title: 'Secure Shred', label: `Irreversibly SHRED ${ids.length} item(s)? This cannot be undone.`, input: false, okText: 'SHRED' }).then(async ok => {
                 if (!ok) return;
                 for (const id of ids) await shredNode(id);
-                st.sel.clear(); await refresh();
+                st.sel.clear(); dirCache.clear(); await refresh();
             });
         },
         up: () => nav(st.path[st.path.length - 1]?.parentId || R),
@@ -780,9 +861,29 @@
             const b = d > 0 ? n.name.slice(0, d) : n.name, e = d > 0 ? n.name.slice(d) : '';
             dlg({ title: 'Rename', label: 'New name:', value: b, hint: e ? `Ext preserved: ${e}` : '' }).then(async v => {
                 if (!v || v === b) return;
-                n.name = await uniq(v + e, n.parentId, n.id);
-                n.modified = Date.now();
-                await req(sto(N, 'readwrite').put(n));
+                const baseName = v + e;
+                const nameKey = `${n.parentId}::${baseName.toLowerCase()}`;
+                
+                if (folderCreationLocks.has(nameKey)) {
+                    await folderCreationLocks.get(nameKey);
+                }
+                let releaseLock;
+                const lock = new Promise(r => releaseLock = r);
+                folderCreationLocks.set(nameKey, lock);
+                
+                try {
+                    const oldName = n.name;
+                    n.name = await uniq(baseName, n.parentId, n.id);
+                    n.modified = Date.now();
+                    await req(sto(N, 'readwrite').put(n));
+                    
+                    const siblings = await getSiblings(n.parentId);
+                    siblings.delete(oldName.toLowerCase());
+                    siblings.set(n.name.toLowerCase(), n.id);
+                } finally {
+                    folderCreationLocks.delete(nameKey);
+                    releaseLock();
+                }
                 await refresh();
             });
         },
@@ -1061,6 +1162,7 @@
                             } else {
                                 stat('Upload complete. All files saved successfully.');
                             }
+                            folderCreationLocks.clear(); // Cleanup locks
                         }
                     }
                 })();
@@ -1080,7 +1182,6 @@
     // Main Event Binds
     // =========================================================================
     function bind() {
-        // Disable native right click menu globally
         window.addEventListener('contextmenu', e => e.preventDefault());
 
         const badge = $('#browserBadge');

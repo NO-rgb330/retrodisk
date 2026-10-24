@@ -59,7 +59,7 @@
     // =========================================================================
     // Constants & helpers
     // =========================================================================
-    const DB = 'rd8', V = 1, N = 'n', R = 'r', O = 'opf8', C = 20 * 1024 * 1024, L = 5 * 60 * 1000; // C increased to 20 MB
+    const DB = 'rd8', V = 1, N = 'n', R = 'r', O = 'opf8', C = 20 * 1024 * 1024, L = 5 * 60 * 1000;
     let db, opf = null, wkr = null, wkrOK = false;
     let st = { cwd: R, items: [], sel: new Set(), path: [], unlocked: new Set(), isGrid: false, hiddenVolume: false, quickAccess: [] };
     let EST = { usage: 0, quota: 0 }, purls = [], dlgRes = null, dragId = null, sCol = 'name', sAsc = true, sQuery = '', lockT, activeBackend = 'none', webrtcPC = null;
@@ -132,7 +132,7 @@
     };
 
     // =========================================================================
-    // Worker logic
+    // Worker logic (ULTRA-FAST OPFS)
     // =========================================================================
     const processChunkLocal = async ({ chunk, compress, password, salt, algorithm, kdf }) => {
         let buf = chunk;
@@ -157,6 +157,8 @@
     const initWorker = async () => {
         if (typeof Worker === 'undefined') { wkrOK = false; return; }
         try { wkr = new Worker('worker.js'); } catch (e) { wkrOK = false; wkr = null; return; }
+        
+        // Wait for worker to boot up
         wkrOK = await new Promise(res => {
             let done = false;
             const finish = v => { if (done) return; done = true; clearTimeout(to); wkr.removeEventListener('message', onMsg); wkr.removeEventListener('error', onErr); res(v); };
@@ -165,16 +167,41 @@
             const onErr = () => finish(false);
             wkr.addEventListener('message', onMsg);
             wkr.addEventListener('error', onErr);
-            try { wkr.postMessage({}); } catch (e) { finish(false); }
+            try { wkr.postMessage({ action: 'ping' }); } catch (e) { finish(false); }
         });
-        if (!wkrOK) { try { wkr.terminate(); } catch (e) { } wkr = null; }
-        else wkr.onerror = () => { wkrOK = false; };
+
+        if (!wkrOK) {
+            try { wkr.terminate(); } catch (e) { }
+            wkr = null;
+            console.info('Worker.js not usable; running in main thread.');
+            return;
+        }
+
+        wkr.onerror = () => { wkrOK = false; };
+
+        // PASS OPFS DIRECTORY HANDLE TO WORKER
+        if (activeBackend === 'OPFS' && opf) {
+            try {
+                const dirHandle = await opf.getDirectoryHandle(O, { create: true });
+                wkr.postMessage({ action: 'init', opfDir: dirHandle });
+            } catch (e) {
+                console.warn('Could not pass OPFS handle to worker', e);
+            }
+        }
     };
 
     const processChunk = (data) => new Promise((res, rej) => {
         if (!wkrOK || !wkr) { processChunkLocal(data).then(res).catch(rej); return; }
-        wkr.onmessage = e => { if (e.data && e.data.ok) res(e.data); else rej(new Error((e.data && e.data.error) || 'Worker failed')); };
-        try { wkr.postMessage(data); } catch (e) { wkr.onmessage = null; processChunkLocal(data).then(res).catch(rej); }
+        wkr.onmessage = e => { 
+            if (e.data && e.data.ok) res(e.data); 
+            else rej(new Error((e.data && e.data.error) || 'Worker failed')); 
+        };
+        try { 
+            wkr.postMessage({ action: 'process', ...data }); 
+        } catch (e) { 
+            wkr.onmessage = null; 
+            processChunkLocal(data).then(res).catch(rej); 
+        }
     });
 
     // =========================================================================
@@ -284,24 +311,43 @@
 
     const proc = async (file, pwd, algorithm, kdf) => {
         const tot = Math.ceil(file.size / C);
-        // Optimization: only compress text-like files under 100 MB
         const comp = file.size < 100 * 1024 * 1024 && (file.type.startsWith('text/') || file.type === 'application/json');
         const salt = crypto.getRandomValues(new Uint8Array(16));
         const cs = [], ivs = [], id = uid();
 
-        let writ = activeBackend === 'OPFS' ? await (await getFhOPFS(id, true)).createWritable() : null;
+        let writ = null;
         let chunks = [];
+        let currentOffset = 0;
 
         for (let i = 0; i < tot; i++) {
             const c = await file.slice(i * C, Math.min((i + 1) * C, file.size)).arrayBuffer();
+            
             const res = await processChunk({
-                chunk: c, compress: comp, password: pwd, salt: salt, algorithm: algorithm, kdf: kdf
+                chunk: c, compress: comp, password: pwd, salt: salt, algorithm: algorithm, kdf: kdf,
+                fileId: id, offset: currentOffset
             });
-            cs.push(res.buf.byteLength);
+
+            if (res.syncWritten) {
+                cs.push(res.size);
+                currentOffset += res.size;
+            } else {
+                cs.push(res.buf.byteLength);
+                if (activeBackend === 'OPFS') {
+                    if (!writ) writ = await (await getFhOPFS(id, true)).createWritable({ keepExistingData: true });
+                    await writ.seek(currentOffset);
+                    await writ.write(new Uint8Array(res.buf));
+                } else {
+                    chunks.push(new Uint8Array(res.buf));
+                }
+                currentOffset += res.buf.byteLength;
+            }
+            
             if (res.iv) ivs.push(res.iv);
-            if (writ) await writ.write(new Uint8Array(res.buf)); else chunks.push(new Uint8Array(res.buf));
         }
-        if (writ) await writ.close(); else await writeBlob(id, new Blob(chunks));
+        
+        if (writ) await writ.close();
+        else if (chunks.length > 0) await writeBlob(id, new Blob(chunks));
+        
         return { id, salt: Array.from(salt), ivs, cs, comp, enc: !!pwd, algorithm, kdf };
     };
 
@@ -882,13 +928,10 @@
 
     const updateProgressUI = (currFile, currIdx, total, bytesProcessed, totalBytes) => {
         const percent = total === 0 ? 0 : Math.round((currIdx / total) * 100);
-        // Update full modal
         if ($('#upload-progress-bar')) $('#upload-progress-bar').style.width = percent + '%';
         if ($('#upload-status-text')) $('#upload-status-text').textContent = `Uploading ${currIdx + 1} of ${total} files...`;
         if ($('#upload-file-name')) $('#upload-file-name').textContent = currFile;
         if ($('#upload-stats')) $('#upload-stats').textContent = `${fmtSz(bytesProcessed)} / ${fmtSz(totalBytes)} (${percent}%)`;
-        
-        // Update minimized widget
         if ($('#upload-mini-progress-bar')) $('#upload-mini-progress-bar').style.width = percent + '%';
         if ($('#upload-mini-file-name')) $('#upload-mini-file-name').textContent = currFile;
     };
@@ -910,7 +953,6 @@
         if (progressModal) progressModal.hidden = false;
         if (miniWidget) miniWidget.hidden = true;
 
-        // Bind minimize/restore buttons dynamically (to avoid duplicates)
         const btnMinimize = $('#btnMinimizeUpload');
         const btnRestore = $('#btnRestoreUpload');
         if (btnMinimize) {

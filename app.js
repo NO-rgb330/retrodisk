@@ -29,6 +29,21 @@
     const THEME_KEY = 'rd9_theme';
     const browserInfo = detectBrowser();
 
+    const getCapabilities = () => ({
+        opfs: !!(navigator.storage && navigator.storage.getDirectory),
+        webCrypto: !!(window.crypto && window.crypto.subtle),
+        compression: typeof CompressionStream !== 'undefined',
+        decompression: typeof DecompressionStream !== 'undefined',
+        workers: typeof Worker !== 'undefined',
+        localStorage: (() => { try { localStorage.setItem('__rd_t', '1'); localStorage.removeItem('__rd_t'); return true; } catch (e) { return false; } })(),
+        fullscreen: !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
+        webrtc: typeof RTCPeerConnection !== 'undefined',
+        storageEstimate: !!(navigator.storage && navigator.storage.estimate),
+        indexedDB: !!window.indexedDB,
+        secureContext: window.isSecureContext,
+        chacha: !!(crypto.subtle && crypto.subtle.encrypt && crypto.subtle.encrypt({ name: 'ChaCha20-Poly1305' }, { name: 'ChaCha20-Poly1305' }, new Uint8Array(0)).catch(() => true))
+    });
+
     const applyTheme = (theme, persist) => {
         document.body.dataset.theme = theme;
         if (persist !== false) { try { localStorage.setItem(THEME_KEY, theme); } catch (e) { } }
@@ -91,8 +106,6 @@
         const cursor = $('#custom-cursor');
         if (!cursor) return;
         
-        let isClicking = false;
-        
         const updatePos = (x, y) => {
             cursor.style.left = x + 'px';
             cursor.style.top = y + 'px';
@@ -101,18 +114,16 @@
         window.addEventListener('mousemove', e => updatePos(e.clientX, e.clientY));
         
         window.addEventListener('mousedown', () => {
-            isClicking = true;
             cursor.classList.add('clicking');
         });
         
         window.addEventListener('mouseup', () => {
-            isClicking = false;
             cursor.classList.remove('clicking');
         });
         
         // Detect hover states to change cursor style
         window.addEventListener('mouseover', e => {
-            const isInteractive = e.target.closest('button, .btn, .row, .mi, .cr, .quick-item, input, select, textarea, .col[data-sort]');
+            const isInteractive = e.target.closest('button, .btn, .row, .mi, .cr, .quick-item, input, select, textarea, .col[data-sort], .winbtns button');
             if (isInteractive) cursor.classList.add('pointer');
             else cursor.classList.remove('pointer');
         });
@@ -246,14 +257,6 @@
     const list = pid => req(sto(N).index('pid').getAll(pid));
     const node = id => id === R ? Promise.resolve({ id: R, name: 'My Disk', kind: 'folder', parentId: null }) : req(sto(N).get(id));
 
-    const uniq = async (n, pid, ex) => {
-        const s = await getSiblings(pid), t = new Set(s.keys());
-        if (!t.has(n.toLowerCase())) return n;
-        const d = n.lastIndexOf('.'), b = d > 0 ? n.slice(0, d) : n, e = d > 0 ? n.slice(d) : '';
-        let i = 2, c; do { c = `${b} (${i})${e}`; i++; } while (t.has(c.toLowerCase()));
-        return c;
-    };
-
     const getSiblings = async (pid) => {
         if (dirCache.has(pid)) return dirCache.get(pid);
         const arr = await list(pid);
@@ -261,6 +264,14 @@
         arr.forEach(n => map.set(n.name.toLowerCase(), n.id));
         dirCache.set(pid, map);
         return map;
+    };
+
+    const uniq = async (n, pid, ex) => {
+        const s = await getSiblings(pid), t = new Set(s.keys());
+        if (!t.has(n.toLowerCase())) return n;
+        const d = n.lastIndexOf('.'), b = d > 0 ? n.slice(0, d) : n, e = d > 0 ? n.slice(d) : '';
+        let i = 2, c; do { c = `${b} (${i})${e}`; i++; } while (t.has(c.toLowerCase()));
+        return c;
     };
 
     const getFhOPFS = async (id, cr) => {
@@ -599,6 +610,12 @@
         };
     });
 
+    const getKdfOptions = () => {
+        const opts = [{ id: 'pbkdf2', label: 'PBKDF2 (SHA-256, 600k iterations)' }];
+        if (typeof argon2 !== 'undefined') opts.push({ id: 'argon2id', label: 'Argon2id (Memory-hard, stronger)' });
+        return opts;
+    };
+
     const offer = nd => new Promise(res => {
         const kdfOpts = getKdfOptions().map(o => `<option value="${o.id}">${o.label}</option>`).join('');
         const p = document.createElement('div'); p.className = 'toast-panel';
@@ -659,10 +676,21 @@
         };
     });
 
-    const getKdfOptions = () => {
-        const opts = [{ id: 'pbkdf2', label: 'PBKDF2 (SHA-256, 600k iterations)' }];
-        if (typeof argon2 !== 'undefined') opts.push({ id: 'argon2id', label: 'Argon2id (Memory-hard, stronger)' });
-        return opts;
+    const showCompatInfo = () => {
+        const modal = $('#compat-modal'), body = $('#compatBody');
+        if (!modal || !body) return;
+        const c = getCapabilities(), b = browserInfo;
+        const rows = [
+            ['Browser', b.name], ['Engine', b.engine], ['OS', b.os], ['Secure Context', c.secureContext ? 'Yes' : 'No'],
+            ['OPFS', c.opfs ? 'Supported' : 'Not available'], ['IndexedDB', c.indexedDB ? 'Supported' : 'Not available'],
+            ['Web Crypto', c.webCrypto ? 'Supported' : 'Not available'], ['CompressionStream', c.compression ? 'Supported' : 'Not available'],
+            ['Web Workers', c.workers ? 'Supported' : 'Not available'], ['LocalStorage', c.localStorage ? 'Available' : 'Blocked'],
+            ['Active Backend', activeBackend || 'Detecting…'], ['Worker Status', wkrOK ? 'Running' : 'Main thread fallback'],
+            ['Default Theme', BROWSER_THEMES[b.name] || 'default'],
+            ['ChaCha20-Poly1305', c.chacha ? 'Supported' : 'Not available']
+        ];
+        body.innerHTML = '<table class="prop-table">' + rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('') + `</table>`;
+        modal.hidden = false;
     };
 
     // =========================================================================

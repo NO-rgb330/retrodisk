@@ -676,7 +676,8 @@
         };
     });
 
-    const showCompatInfo = () => {
+    // Using standard function declaration here to ensure it is hoisted and always available
+    function showCompatInfo() {
         const modal = $('#compat-modal'), body = $('#compatBody');
         if (!modal || !body) return;
         const c = getCapabilities(), b = browserInfo;
@@ -691,7 +692,7 @@
         ];
         body.innerHTML = '<table class="prop-table">' + rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('') + `</table>`;
         modal.hidden = false;
-    };
+    }
 
     // =========================================================================
     // Complex Actions & Optimized Path Creation
@@ -1076,7 +1077,8 @@
     // =========================================================================
     // Main Event Binds
     // =========================================================================
-    const bind = () => {
+    // Using standard function declaration here for hoisting safety
+    function bind() {
         // Disable native right click menu globally
         window.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -1410,12 +1412,13 @@
             clearTimeout(lockT);
             lockT = setTimeout(() => { act.lock(); stat('Auto-Locked.'); }, L);
         };
-    };
+    }
 
     // =========================================================================
     // Performance & Bootstrap
     // =========================================================================
-    const initPerfWidget = () => {
+    // Using standard function declaration here for hoisting safety
+    function initPerfWidget() {
         const memBtn = $('#btn-mem'), diskBtn = $('#btn-disk'), memBox = $('#mem-chart'), diskBox = $('#disk-chart');
         if (!memBtn || !diskBtn || !memBox || !diskBox) return;
         let active = null;
@@ -1465,7 +1468,7 @@
                 });
             }
         }, 1000);
-    };
+    }
 
     const initStorage = async () => {
         if (db) db.close();

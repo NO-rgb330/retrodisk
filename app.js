@@ -29,6 +29,13 @@
     const THEME_KEY = 'rd9_theme';
     const browserInfo = detectBrowser();
 
+    // =========================================================================
+    // Core Helpers (Defined early to prevent hoisting issues)
+    // =========================================================================
+    const $ = s => document.querySelector(s);
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const yieldUI = () => new Promise(r => setTimeout(r, 0));
+
     const getCapabilities = () => ({
         opfs: !!(navigator.storage && navigator.storage.getDirectory),
         webCrypto: !!(window.crypto && window.crypto.subtle),
@@ -44,35 +51,39 @@
         chacha: !!(crypto.subtle && crypto.subtle.encrypt && crypto.subtle.encrypt({ name: 'ChaCha20-Poly1305' }, { name: 'ChaCha20-Poly1305' }, new Uint8Array(0)).catch(() => true))
     });
 
-    const applyTheme = (theme, persist) => {
-        document.body.dataset.theme = theme;
-        if (persist !== false) { try { localStorage.setItem(THEME_KEY, theme); } catch (e) { } }
-    };
-
-    const initTheme = () => {
-        let saved = null;
-        try { saved = localStorage.getItem(THEME_KEY); } catch (e) { }
-        const def = BROWSER_THEMES[browserInfo.name] || 'default';
-        applyTheme(saved || def, false);
-    };
+    // =========================================================================
+    // DIALOGS & SYSTEM INFO (Defined BEFORE bind)
+    // =========================================================================
+    function showCompatInfo() {
+        const modal = $('#compat-modal'), body = $('#compatBody');
+        if (!modal || !body) return;
+        const c = getCapabilities(), b = browserInfo;
+        const rows = [
+            ['Browser', b.name], ['Engine', b.engine], ['OS', b.os], ['Secure Context', c.secureContext ? 'Yes' : 'No'],
+            ['OPFS', c.opfs ? 'Supported' : 'Not available'], ['IndexedDB', c.indexedDB ? 'Supported' : 'Not available'],
+            ['Web Crypto', c.webCrypto ? 'Supported' : 'Not available'], ['CompressionStream', c.compression ? 'Supported' : 'Not available'],
+            ['Web Workers', c.workers ? 'Supported' : 'Not available'], ['LocalStorage', c.localStorage ? 'Available' : 'Blocked'],
+            ['Active Backend', activeBackend || 'Detecting…'], ['Worker Status', wkrOK ? 'Running' : 'Main thread fallback'],
+            ['Default Theme', BROWSER_THEMES[b.name] || 'default'],
+            ['ChaCha20-Poly1305', c.chacha ? 'Supported' : 'Not available']
+        ];
+        body.innerHTML = '<table class="prop-table">' + rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('') + `</table>`;
+        modal.hidden = false;
+    }
 
     // =========================================================================
-    // Constants & helpers
+    // Constants & State
     // =========================================================================
     const DB = 'rd8', V = 1, N = 'n', R = 'r', O = 'opf8', C = 20 * 1024 * 1024, L = 5 * 60 * 1000; // 20 MB chunks
     let db, opf = null, wkr = null, wkrOK = false;
     let st = { cwd: R, items: [], sel: new Set(), path: [], unlocked: new Set(), isGrid: false, hiddenVolume: false, quickAccess: [] };
     let EST = { usage: 0, quota: 0 }, purls = [], dlgRes = null, dragId = null, sCol = 'name', sAsc = true, sQuery = '', lockT, activeBackend = 'none', webrtcPC = null;
 
-    // Directory Cache to massively speed up folder uploads
     const dirCache = new Map(); 
 
-    const $ = s => document.querySelector(s);
-    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const uid = () => 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
     const req = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
     const tx = t => new Promise((res, rej) => { t.oncomplete = res; t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
-    const yieldUI = () => new Promise(r => setTimeout(r, 0));
 
     const fmtSz = b => {
         if (b == null) return '—';
@@ -99,6 +110,18 @@
         return Array.from(new Uint8Array(buf)).map(x => x.toString(16).padStart(2, '0')).join('');
     };
 
+    const applyTheme = (theme, persist) => {
+        document.body.dataset.theme = theme;
+        if (persist !== false) { try { localStorage.setItem(THEME_KEY, theme); } catch (e) { } }
+    };
+
+    const initTheme = () => {
+        let saved = null;
+        try { saved = localStorage.getItem(THEME_KEY); } catch (e) { }
+        const def = BROWSER_THEMES[browserInfo.name] || 'default';
+        applyTheme(saved || def, false);
+    };
+
     // =========================================================================
     // CUSTOM RETRO CURSOR LOGIC
     // =========================================================================
@@ -121,7 +144,6 @@
             cursor.classList.remove('clicking');
         });
         
-        // Detect hover states to change cursor style
         window.addEventListener('mouseover', e => {
             const isInteractive = e.target.closest('button, .btn, .row, .mi, .cr, .quick-item, input, select, textarea, .col[data-sort], .winbtns button');
             if (isInteractive) cursor.classList.add('pointer');
@@ -379,7 +401,6 @@
     const add = async (f, pid, pwd, algorithm = 'AES-GCM', kdf = 'pbkdf2', bulk = false) => {
         const id = uid(), n = await uniq(f.name || 'untitled', pid);
         
-        // Skip thumbnail generation if bulk uploading to save major time
         const th = (pwd || bulk) ? null : await thumb(f, f.type.startsWith('video/') ? 'video' : 'image');
         
         const m = await proc(f, pwd, algorithm, kdf);
@@ -392,7 +413,6 @@
         };
         await req(sto(N, 'readwrite').add(nd));
         
-        // Update cache
         const siblings = await getSiblings(pid);
         siblings.set(n.toLowerCase(), nd.id);
         
@@ -675,24 +695,6 @@
             cl({ pwd: tp.value, hint: p.querySelector('#th').value, ro: p.querySelector('#tr').checked, kdf: p.querySelector('#tkdf').value, algorithm: p.querySelector('#talg').value });
         };
     });
-
-    // Using standard function declaration here to ensure it is hoisted and always available
-    function showCompatInfo() {
-        const modal = $('#compat-modal'), body = $('#compatBody');
-        if (!modal || !body) return;
-        const c = getCapabilities(), b = browserInfo;
-        const rows = [
-            ['Browser', b.name], ['Engine', b.engine], ['OS', b.os], ['Secure Context', c.secureContext ? 'Yes' : 'No'],
-            ['OPFS', c.opfs ? 'Supported' : 'Not available'], ['IndexedDB', c.indexedDB ? 'Supported' : 'Not available'],
-            ['Web Crypto', c.webCrypto ? 'Supported' : 'Not available'], ['CompressionStream', c.compression ? 'Supported' : 'Not available'],
-            ['Web Workers', c.workers ? 'Supported' : 'Not available'], ['LocalStorage', c.localStorage ? 'Available' : 'Blocked'],
-            ['Active Backend', activeBackend || 'Detecting…'], ['Worker Status', wkrOK ? 'Running' : 'Main thread fallback'],
-            ['Default Theme', BROWSER_THEMES[b.name] || 'default'],
-            ['ChaCha20-Poly1305', c.chacha ? 'Supported' : 'Not available']
-        ];
-        body.innerHTML = '<table class="prop-table">' + rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('') + `</table>`;
-        modal.hidden = false;
-    }
 
     // =========================================================================
     // Complex Actions & Optimized Path Creation
@@ -1077,7 +1079,6 @@
     // =========================================================================
     // Main Event Binds
     // =========================================================================
-    // Using standard function declaration here for hoisting safety
     function bind() {
         // Disable native right click menu globally
         window.addEventListener('contextmenu', e => e.preventDefault());
@@ -1417,7 +1418,6 @@
     // =========================================================================
     // Performance & Bootstrap
     // =========================================================================
-    // Using standard function declaration here for hoisting safety
     function initPerfWidget() {
         const memBtn = $('#btn-mem'), diskBtn = $('#btn-disk'), memBox = $('#mem-chart'), diskBox = $('#disk-chart');
         if (!memBtn || !diskBtn || !memBox || !diskBox) return;

@@ -29,21 +29,6 @@
     const THEME_KEY = 'rd9_theme';
     const browserInfo = detectBrowser();
 
-    const getCapabilities = () => ({
-        opfs: !!(navigator.storage && navigator.storage.getDirectory),
-        webCrypto: !!(window.crypto && window.crypto.subtle),
-        compression: typeof CompressionStream !== 'undefined',
-        decompression: typeof DecompressionStream !== 'undefined',
-        workers: typeof Worker !== 'undefined',
-        localStorage: (() => { try { localStorage.setItem('__rd_t', '1'); localStorage.removeItem('__rd_t'); return true; } catch (e) { return false; } })(),
-        fullscreen: !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
-        webrtc: typeof RTCPeerConnection !== 'undefined',
-        storageEstimate: !!(navigator.storage && navigator.storage.estimate),
-        indexedDB: !!window.indexedDB,
-        secureContext: window.isSecureContext,
-        chacha: !!(crypto.subtle && crypto.subtle.encrypt && crypto.subtle.encrypt({ name: 'ChaCha20-Poly1305' }, { name: 'ChaCha20-Poly1305' }, new Uint8Array(0)).catch(() => true))
-    });
-
     const applyTheme = (theme, persist) => {
         document.body.dataset.theme = theme;
         if (persist !== false) { try { localStorage.setItem(THEME_KEY, theme); } catch (e) { } }
@@ -59,17 +44,19 @@
     // =========================================================================
     // Constants & helpers
     // =========================================================================
-    const DB = 'rd8', V = 1, N = 'n', R = 'r', O = 'opf8', C = 20 * 1024 * 1024, L = 5 * 60 * 1000;
+    const DB = 'rd8', V = 1, N = 'n', R = 'r', O = 'opf8', C = 20 * 1024 * 1024, L = 5 * 60 * 1000; // 20 MB chunks
     let db, opf = null, wkr = null, wkrOK = false;
     let st = { cwd: R, items: [], sel: new Set(), path: [], unlocked: new Set(), isGrid: false, hiddenVolume: false, quickAccess: [] };
     let EST = { usage: 0, quota: 0 }, purls = [], dlgRes = null, dragId = null, sCol = 'name', sAsc = true, sQuery = '', lockT, activeBackend = 'none', webrtcPC = null;
+
+    // Directory Cache to massively speed up folder uploads
+    const dirCache = new Map(); 
 
     const $ = s => document.querySelector(s);
     const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const uid = () => 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
     const req = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
     const tx = t => new Promise((res, rej) => { t.oncomplete = res; t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
-
     const yieldUI = () => new Promise(r => setTimeout(r, 0));
 
     const fmtSz = b => {
@@ -85,15 +72,6 @@
         return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
     };
 
-    const toggleFullscreen = () => {
-        if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => { });
-        else if (document.exitFullscreen) document.exitFullscreen();
-    };
-    document.addEventListener('fullscreenchange', () => {
-        const btn = $('#btnFullscreen');
-        if (btn) btn.textContent = document.fullscreenElement ? '⛶ Exit Fullscreen' : '⛶ Fullscreen';
-    });
-
     const hashPwd = async p => {
         if (!crypto.subtle) return btoa(p);
         const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p));
@@ -107,28 +85,37 @@
     };
 
     // =========================================================================
-    // Enhanced KDF and Encryption
+    // CUSTOM RETRO CURSOR LOGIC
     // =========================================================================
-    const getKdfOptions = () => {
-        const opts = [{ id: 'pbkdf2', label: 'PBKDF2 (SHA-256, 600k iterations)' }];
-        if (typeof argon2 !== 'undefined') opts.push({ id: 'argon2id', label: 'Argon2id (Memory-hard, stronger)' });
-        return opts;
-    };
-
-    const deriveKey = async (password, salt, kdf, algorithm) => {
-        if (kdf === 'argon2id' && typeof argon2 !== 'undefined') {
-            const result = await argon2.hash({
-                pass: password, salt: salt, time: 3, mem: 65536, hashLen: 32, parallelism: 1, type: argon2.ArgonType.Argon2id
-            });
-            return result.hash;
-        } else {
-            const baseKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
-            const key = await crypto.subtle.deriveKey(
-                { name: 'PBKDF2', salt: salt, iterations: 600000, hash: 'SHA-256' },
-                baseKey, { name: algorithm, length: 256 }, true, ['encrypt', 'decrypt']
-            );
-            return await crypto.subtle.exportKey('raw', key);
-        }
+    const initCursor = () => {
+        const cursor = $('#custom-cursor');
+        if (!cursor) return;
+        
+        let isClicking = false;
+        
+        const updatePos = (x, y) => {
+            cursor.style.left = x + 'px';
+            cursor.style.top = y + 'px';
+        };
+        
+        window.addEventListener('mousemove', e => updatePos(e.clientX, e.clientY));
+        
+        window.addEventListener('mousedown', () => {
+            isClicking = true;
+            cursor.classList.add('clicking');
+        });
+        
+        window.addEventListener('mouseup', () => {
+            isClicking = false;
+            cursor.classList.remove('clicking');
+        });
+        
+        // Detect hover states to change cursor style
+        window.addEventListener('mouseover', e => {
+            const isInteractive = e.target.closest('button, .btn, .row, .mi, .cr, .quick-item, input, select, textarea, .col[data-sort]');
+            if (isInteractive) cursor.classList.add('pointer');
+            else cursor.classList.remove('pointer');
+        });
     };
 
     // =========================================================================
@@ -154,11 +141,26 @@
         return { ok: true, buf: encryptedBuf, iv: null, algorithm: null, kdf: null, compressed: compress };
     };
 
+    const deriveKey = async (password, salt, kdf, algorithm) => {
+        if (kdf === 'argon2id' && typeof argon2 !== 'undefined') {
+            const result = await argon2.hash({
+                pass: password, salt: salt, time: 3, mem: 65536, hashLen: 32, parallelism: 1, type: argon2.ArgonType.Argon2id
+            });
+            return result.hash;
+        } else {
+            const baseKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+            const key = await crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt: salt, iterations: 600000, hash: 'SHA-256' },
+                baseKey, { name: algorithm, length: 256 }, true, ['encrypt', 'decrypt']
+            );
+            return await crypto.subtle.exportKey('raw', key);
+        }
+    };
+
     const initWorker = async () => {
         if (typeof Worker === 'undefined') { wkrOK = false; return; }
         try { wkr = new Worker('worker.js'); } catch (e) { wkrOK = false; wkr = null; return; }
         
-        // Wait for worker to boot up
         wkrOK = await new Promise(res => {
             let done = false;
             const finish = v => { if (done) return; done = true; clearTimeout(to); wkr.removeEventListener('message', onMsg); wkr.removeEventListener('error', onErr); res(v); };
@@ -176,17 +178,13 @@
             console.info('Worker.js not usable; running in main thread.');
             return;
         }
-
         wkr.onerror = () => { wkrOK = false; };
 
-        // PASS OPFS DIRECTORY HANDLE TO WORKER
         if (activeBackend === 'OPFS' && opf) {
             try {
                 const dirHandle = await opf.getDirectoryHandle(O, { create: true });
                 wkr.postMessage({ action: 'init', opfDir: dirHandle });
-            } catch (e) {
-                console.warn('Could not pass OPFS handle to worker', e);
-            }
+            } catch (e) { }
         }
     };
 
@@ -196,12 +194,8 @@
             if (e.data && e.data.ok) res(e.data); 
             else rej(new Error((e.data && e.data.error) || 'Worker failed')); 
         };
-        try { 
-            wkr.postMessage({ action: 'process', ...data }); 
-        } catch (e) { 
-            wkr.onmessage = null; 
-            processChunkLocal(data).then(res).catch(rej); 
-        }
+        try { wkr.postMessage({ action: 'process', ...data }); } 
+        catch (e) { wkr.onmessage = null; processChunkLocal(data).then(res).catch(rej); }
     });
 
     // =========================================================================
@@ -253,11 +247,20 @@
     const node = id => id === R ? Promise.resolve({ id: R, name: 'My Disk', kind: 'folder', parentId: null }) : req(sto(N).get(id));
 
     const uniq = async (n, pid, ex) => {
-        const s = await list(pid), t = new Set(s.filter(x => x.id !== ex).map(x => x.name.toLowerCase()));
+        const s = await getSiblings(pid), t = new Set(s.keys());
         if (!t.has(n.toLowerCase())) return n;
         const d = n.lastIndexOf('.'), b = d > 0 ? n.slice(0, d) : n, e = d > 0 ? n.slice(d) : '';
         let i = 2, c; do { c = `${b} (${i})${e}`; i++; } while (t.has(c.toLowerCase()));
         return c;
+    };
+
+    const getSiblings = async (pid) => {
+        if (dirCache.has(pid)) return dirCache.get(pid);
+        const arr = await list(pid);
+        const map = new Map();
+        arr.forEach(n => map.set(n.name.toLowerCase(), n.id));
+        dirCache.set(pid, map);
+        return map;
     };
 
     const getFhOPFS = async (id, cr) => {
@@ -321,7 +324,6 @@
 
         for (let i = 0; i < tot; i++) {
             const c = await file.slice(i * C, Math.min((i + 1) * C, file.size)).arrayBuffer();
-            
             const res = await processChunk({
                 chunk: c, compress: comp, password: pwd, salt: salt, algorithm: algorithm, kdf: kdf,
                 fileId: id, offset: currentOffset
@@ -341,13 +343,10 @@
                 }
                 currentOffset += res.buf.byteLength;
             }
-            
             if (res.iv) ivs.push(res.iv);
         }
-        
         if (writ) await writ.close();
         else if (chunks.length > 0) await writeBlob(id, new Blob(chunks));
-        
         return { id, salt: Array.from(salt), ivs, cs, comp, enc: !!pwd, algorithm, kdf };
     };
 
@@ -366,8 +365,12 @@
         });
     };
 
-    const add = async (f, pid, pwd, algorithm = 'AES-GCM', kdf = 'pbkdf2') => {
-        const id = uid(), n = await uniq(f.name || 'untitled', pid), th = pwd ? null : await thumb(f, f.type.startsWith('video/') ? 'video' : 'image');
+    const add = async (f, pid, pwd, algorithm = 'AES-GCM', kdf = 'pbkdf2', bulk = false) => {
+        const id = uid(), n = await uniq(f.name || 'untitled', pid);
+        
+        // Skip thumbnail generation if bulk uploading to save major time
+        const th = (pwd || bulk) ? null : await thumb(f, f.type.startsWith('video/') ? 'video' : 'image');
+        
         const m = await proc(f, pwd, algorithm, kdf);
         const nd = {
             id: m.id, parentId: pid, name: n, kind: 'file', mime: f.type || 'application/octet-stream',
@@ -377,6 +380,11 @@
             algorithm: m.algorithm, kdf: m.kdf
         };
         await req(sto(N, 'readwrite').add(nd));
+        
+        // Update cache
+        const siblings = await getSiblings(pid);
+        siblings.set(n.toLowerCase(), nd.id);
+        
         return nd;
     };
 
@@ -420,6 +428,10 @@
         const n = await node(id);
         if (n && n.kind === 'file') await deleteBlob(id);
         await req(sto(N, 'readwrite').delete(id));
+        if (n) {
+            const siblings = await getSiblings(n.parentId);
+            if (siblings) siblings.delete(n.name.toLowerCase());
+        }
     };
 
     const shredNode = async id => {
@@ -647,43 +659,28 @@
         };
     });
 
-    const showCompatInfo = () => {
-        const modal = $('#compat-modal'), body = $('#compatBody');
-        if (!modal || !body) return;
-        const c = getCapabilities(), b = browserInfo;
-        const rows = [
-            ['Browser', b.name], ['Engine', b.engine], ['OS', b.os], ['Secure Context', c.secureContext ? 'Yes' : 'No'],
-            ['OPFS', c.opfs ? 'Supported' : 'Not available'], ['IndexedDB', c.indexedDB ? 'Supported' : 'Not available'],
-            ['Web Crypto', c.webCrypto ? 'Supported' : 'Not available'], ['CompressionStream', c.compression ? 'Supported' : 'Not available'],
-            ['Web Workers', c.workers ? 'Supported' : 'Not available'], ['LocalStorage', c.localStorage ? 'Available' : 'Blocked'],
-            ['Active Backend', activeBackend || 'Detecting…'], ['Worker Status', wkrOK ? 'Running' : 'Main thread fallback'],
-            ['Default Theme', BROWSER_THEMES[b.name] || 'default'],
-            ['ChaCha20-Poly1305', c.chacha ? 'Supported' : 'Not available']
-        ];
-        body.innerHTML = '<table class="prop-table">' + rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('') + `</table>`;
-        modal.hidden = false;
+    const getKdfOptions = () => {
+        const opts = [{ id: 'pbkdf2', label: 'PBKDF2 (SHA-256, 600k iterations)' }];
+        if (typeof argon2 !== 'undefined') opts.push({ id: 'argon2id', label: 'Argon2id (Memory-hard, stronger)' });
+        return opts;
     };
 
     // =========================================================================
     // Complex Actions & Optimized Path Creation
     // =========================================================================
-    const ensureFolderPath = async (pathStr, parentId, cache) => {
-        const parts = pathStr.split('/').filter(Boolean);
+    const ensureFolderPath = async (pathStr, parentId) => {
+        const parts = pathStr.replace(/\\/g, '/').split('/').filter(p => p && p !== '.' && p !== '..');
         let currentId = parentId;
         for (const part of parts) {
-            const key = currentId + '::' + part;
-            if (cache && cache.has(key)) {
-                currentId = cache.get(key);
-            } else {
-                const siblings = await list(currentId);
-                let folder = siblings.find(n => n.name === part && n.kind === 'folder');
-                if (!folder) {
-                    folder = { id: uid(), parentId: currentId, name: part, kind: 'folder', size: 0, compSize: 0, created: Date.now(), modified: Date.now() };
-                    await req(sto(N, 'readwrite').add(folder));
-                }
-                if (cache) cache.set(key, folder.id);
-                currentId = folder.id;
+            const siblings = await getSiblings(currentId);
+            let folderId = siblings.get(part.toLowerCase());
+            if (!folderId) {
+                folderId = uid();
+                const folder = { id: folderId, parentId: currentId, name: part, kind: 'folder', size: 0, compSize: 0, created: Date.now(), modified: Date.now() };
+                await req(sto(N, 'readwrite').add(folder));
+                siblings.set(part.toLowerCase(), folderId);
             }
+            currentId = folderId;
         }
         return currentId;
     };
@@ -922,22 +919,24 @@
     };
 
     // =========================================================================
-    // Robust Import & Drag-Drop Logic with Progress (Minimizable)
+    // Robust Import & Drag-Drop Logic with Parallel Uploads
     // =========================================================================
     let isMarquee = false, mqStart = { x: 0, y: 0 }, mqBox = null;
 
-    const updateProgressUI = (currFile, currIdx, total, bytesProcessed, totalBytes) => {
+    const updateProgressUI = (currIdx, total, bytesProcessed, totalBytes, currFile) => {
         const percent = total === 0 ? 0 : Math.round((currIdx / total) * 100);
         if ($('#upload-progress-bar')) $('#upload-progress-bar').style.width = percent + '%';
-        if ($('#upload-status-text')) $('#upload-status-text').textContent = `Uploading ${currIdx + 1} of ${total} files...`;
-        if ($('#upload-file-name')) $('#upload-file-name').textContent = currFile;
+        if ($('#upload-status-text')) $('#upload-status-text').textContent = `Uploading ${currIdx} of ${total} files...`;
+        if (currFile && $('#upload-file-name')) $('#upload-file-name').textContent = currFile;
         if ($('#upload-stats')) $('#upload-stats').textContent = `${fmtSz(bytesProcessed)} / ${fmtSz(totalBytes)} (${percent}%)`;
         if ($('#upload-mini-progress-bar')) $('#upload-mini-progress-bar').style.width = percent + '%';
-        if ($('#upload-mini-file-name')) $('#upload-mini-file-name').textContent = currFile;
+        if (currFile && $('#upload-mini-file-name')) $('#upload-mini-file-name').textContent = currFile;
     };
 
     const imp = async (fs, preservePaths = false) => {
         if (!fs.length) return;
+        
+        const startDir = st.cwd; 
         
         let sharedPwd = null, sharedHint = null, sharedRo = false, sharedKdf = 'pbkdf2', sharedAlg = 'AES-GCM';
         if (fs.length > 1) {
@@ -969,53 +968,74 @@
         }
 
         let totalBytes = fs.reduce((acc, f) => acc + f.size, 0);
-        let bytesProcessed = 0;
+        let bytesProcessed = 0, completedCount = 0;
         let failedFiles = [];
-        const pathCache = new Map();
+        
+        // Skip thumbnails if there are many files (performance optimization)
+        const bulk = fs.length > 30;
 
         if (preservePaths) {
             fs.sort((a, b) => (a.webkitRelativePath || '').localeCompare(b.webkitRelativePath || ''));
         }
 
-        for (let i = 0; i < fs.length; i++) {
-            const f = fs[i];
-            let targetPid = st.cwd;
-            const relPath = f.webkitRelativePath || '';
-            const displayPath = relPath ? relPath : f.name;
-            
-            updateProgressUI(displayPath, i, fs.length, bytesProcessed, totalBytes);
-            await yieldUI();
+        // CONCURRENCY LIMIT: Process 3 files simultaneously
+        const concurrency = 3;
+        let active = 0, index = 0;
 
-            try {
-                if (preservePaths && relPath) {
-                    const parts = relPath.split('/');
-                    parts.pop();
-                    targetPid = await ensureFolderPath(parts.join('/'), st.cwd, pathCache);
-                }
+        const processQueue = async () => {
+            if (index >= fs.length && active === 0) return;
 
-                const pwdHash = sharedPwd ? await hashPwd(sharedPwd) : null;
-                const n = await add(f, targetPid, pwdHash, sharedAlg, sharedKdf);
+            while (active < concurrency && index < fs.length) {
+                const f = fs[index++];
+                active++;
                 
-                if (sharedHint) { n.hint = sharedHint; await req(sto(N, 'readwrite').put(n)); }
-                if (sharedRo) { n.ro = true; await req(sto(N, 'readwrite').put(n)); }
+                const relPath = (f.webkitRelativePath || '').replace(/\\/g, '/');
+                const displayPath = relPath ? relPath : f.name;
+
+                updateProgressUI(completedCount, fs.length, bytesProcessed, totalBytes, displayPath);
                 
-                bytesProcessed += f.size;
-            } catch (err) {
-                console.error("Failed to upload:", f.name, err);
-                failedFiles.push(displayPath);
+                (async () => {
+                    try {
+                        let targetPid = startDir;
+                        if (preservePaths && relPath) {
+                            const parts = relPath.split('/');
+                            parts.pop();
+                            targetPid = await ensureFolderPath(parts.join('/'), startDir);
+                        }
+
+                        const pwdHash = sharedPwd ? await hashPwd(sharedPwd) : null;
+                        const n = await add(f, targetPid, pwdHash, sharedAlg, sharedKdf, bulk);
+                        
+                        if (sharedHint) { n.hint = sharedHint; await req(sto(N, 'readwrite').put(n)); }
+                        if (sharedRo) { n.ro = true; await req(sto(N, 'readwrite').put(n)); }
+                    } catch (err) {
+                        console.error("Failed to upload:", f.name, err);
+                        failedFiles.push(displayPath);
+                    } finally {
+                        active--;
+                        completedCount++;
+                        bytesProcessed += f.size;
+                        updateProgressUI(completedCount, fs.length, bytesProcessed, totalBytes, displayPath);
+                        
+                        if (index < fs.length) processQueue();
+                        else if (active === 0) {
+                            // DONE
+                            if (progressModal) progressModal.hidden = true;
+                            if (miniWidget) miniWidget.hidden = true;
+                            if (st.cwd === startDir) refresh();
+                            
+                            if (failedFiles.length > 0) {
+                                alert(`Upload completed with errors.\n${failedFiles.length} files failed to save:\n` + failedFiles.slice(0, 5).join('\n') + (failedFiles.length > 5 ? '\n...' : ''));
+                                stat(`Upload partially complete. ${failedFiles.length} failed.`);
+                            } else {
+                                stat('Upload complete. All files saved successfully.');
+                            }
+                        }
+                    }
+                })();
             }
-        }
-
-        if (progressModal) progressModal.hidden = true;
-        if (miniWidget) miniWidget.hidden = true;
-        await refresh();
-        
-        if (failedFiles.length > 0) {
-            alert(`Upload completed with errors.\n${failedFiles.length} files failed to save:\n` + failedFiles.slice(0, 5).join('\n') + (failedFiles.length > 5 ? '\n...' : ''));
-            stat(`Upload partially complete. ${failedFiles.length} failed.`);
-        } else {
-            stat('Upload complete. All files saved successfully.');
-        }
+        };
+        processQueue();
     };
 
     const initWebRTC = () => {
@@ -1026,9 +1046,12 @@
     };
 
     // =========================================================================
-    // Main Event Binds (With Null Guards)
+    // Main Event Binds
     // =========================================================================
     const bind = () => {
+        // Disable native right click menu globally
+        window.addEventListener('contextmenu', e => e.preventDefault());
+
         const badge = $('#browserBadge');
         if (badge) { badge.onclick = showCompatInfo; badge.textContent = BROWSER_LABELS[browserInfo.name]; }
         if ($('#compatClose')) $('#compatClose').onclick = () => $('#compat-modal').hidden = true;
@@ -1041,7 +1064,14 @@
             toolsAnchor.parentElement.appendChild(sep); toolsAnchor.parentElement.appendChild(item);
         }
 
-        if ($('#btnFullscreen')) $('#btnFullscreen').onclick = toggleFullscreen;
+        if ($('#btnFullscreen')) $('#btnFullscreen').onclick = () => {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => { });
+            else if (document.exitFullscreen) document.exitFullscreen();
+        };
+        document.addEventListener('fullscreenchange', () => {
+            const btn = $('#btnFullscreen');
+            if (btn) btn.textContent = document.fullscreenElement ? '⛶ Exit Fullscreen' : '⛶ Fullscreen';
+        });
 
         const menubar = $('#menubar');
         if (menubar) {
@@ -1069,7 +1099,6 @@
         document.addEventListener('contextmenu', e => {
             const r = e.target.closest('.row');
             if (!r || !$('#ctx-menu')) return;
-            e.preventDefault();
             if (!st.sel.has(r.dataset.id)) { st.sel = new Set([r.dataset.id]); render(); side(); }
             const c = $('#ctx-menu');
             c.style.display = 'block';
@@ -1282,12 +1311,13 @@
             try {
                 const buf = await f.arrayBuffer();
                 const unzipped = fflate.unzipSync(new Uint8Array(buf));
-                const pathCache = new Map();
+                const startDir = st.cwd; 
+                
                 for (const [path, data] of Object.entries(unzipped)) {
-                    const parts = path.split('/');
+                    const parts = path.replace(/\\/g, '/').split('/');
                     const name = parts.pop();
                     if (!name) continue;
-                    const targetPid = await ensureFolderPath(parts.join('/'), st.cwd, pathCache);
+                    const targetPid = await ensureFolderPath(parts.join('/'), startDir);
                     const file = new File([new Blob([data])], name);
                     await add(file, targetPid, null);
                 }
@@ -1418,6 +1448,7 @@
     };
 
     initTheme();
+    initCursor();
     document.title = 'RetroDisk 9.0 — ' + browserInfo.name;
     bind();
     initPerfWidget();

@@ -40,7 +40,8 @@
         webrtc: typeof RTCPeerConnection !== 'undefined',
         storageEstimate: !!(navigator.storage && navigator.storage.estimate),
         indexedDB: !!window.indexedDB,
-        secureContext: window.isSecureContext
+        secureContext: window.isSecureContext,
+        chacha: !!(crypto.subtle && crypto.subtle.encrypt && crypto.subtle.encrypt({ name: 'ChaCha20-Poly1305' }, { name: 'ChaCha20-Poly1305' }, new Uint8Array(0)).catch(() => true))
     });
 
     const applyTheme = (theme, persist) => {
@@ -68,6 +69,8 @@
     const uid = () => 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
     const req = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
     const tx = t => new Promise((res, rej) => { t.oncomplete = res; t.onerror = () => rej(t.error); t.onabort = () => rej(t.error); });
+
+    const yieldUI = () => new Promise(r => setTimeout(r, 0));
 
     const fmtSz = b => {
         if (b == null) return '—';
@@ -104,29 +107,51 @@
     };
 
     // =========================================================================
+    // Enhanced KDF and Encryption
+    // =========================================================================
+    const getKdfOptions = () => {
+        const opts = [{ id: 'pbkdf2', label: 'PBKDF2 (SHA-256, 600k iterations)' }];
+        if (typeof argon2 !== 'undefined') opts.push({ id: 'argon2id', label: 'Argon2id (Memory-hard, stronger)' });
+        return opts;
+    };
+
+    const deriveKey = async (password, salt, kdf, algorithm) => {
+        if (kdf === 'argon2id' && typeof argon2 !== 'undefined') {
+            const result = await argon2.hash({
+                pass: password, salt: salt, time: 3, mem: 65536, hashLen: 32, parallelism: 1, type: argon2.ArgonType.Argon2id
+            });
+            return result.hash;
+        } else {
+            const baseKey = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+            const key = await crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt: salt, iterations: 600000, hash: 'SHA-256' },
+                baseKey, { name: algorithm, length: 256 }, true, ['encrypt', 'decrypt']
+            );
+            return await crypto.subtle.exportKey('raw', key);
+        }
+    };
+
+    // =========================================================================
     // Worker logic
     // =========================================================================
-    const processChunkLocal = async ({ chunk, compress, password, saltHex, ivHex }) => {
+    const processChunkLocal = async ({ chunk, compress, password, salt, algorithm, kdf }) => {
         let buf = chunk;
-        if (compress) {
+        if (compress && window.brotliWasm) {
+            buf = await window.brotliWasm.compress(new Uint8Array(buf));
+        } else if (compress) {
             const cs = new CompressionStream('gzip');
             buf = await new Response(new Blob([buf]).stream().pipeThrough(cs)).arrayBuffer();
         }
-        const meta = { compressed: compress, encrypted: !!password, salt: null, iv: null };
+        let encryptedBuf = buf;
         if (password) {
-            if (!crypto.subtle) throw new Error('Web Crypto is unavailable; cannot encrypt.');
-            const salt = new Uint8Array(saltHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-            const iv = new Uint8Array(ivHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-            meta.salt = Array.from(salt);
-            meta.iv = Array.from(iv);
-            const key = await crypto.subtle.deriveKey(
-                { name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' },
-                await crypto.subtle.importKey('raw', new TextEncoder().encode(password), { name: 'PBKDF2' }, false, ['deriveKey']),
-                { name: 'AES-GCM', length: 256 }, false, ['encrypt']
-            );
-            buf = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, buf);
+            if (!crypto.subtle) throw new Error('Web Crypto is unavailable.');
+            const keyBytes = await deriveKey(password, salt, kdf, algorithm);
+            const cryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: algorithm }, false, ['encrypt']);
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            encryptedBuf = await crypto.subtle.encrypt({ name: algorithm, iv }, cryptoKey, buf);
+            return { ok: true, buf: encryptedBuf, iv: Array.from(iv), algorithm, kdf, compressed: compress };
         }
-        return { ok: true, buf, meta };
+        return { ok: true, buf: encryptedBuf, iv: null, algorithm: null, kdf: null, compressed: compress };
     };
 
     const initWorker = async () => {
@@ -257,22 +282,25 @@
         }
     };
 
-    const proc = async (file, pwd) => {
+    const proc = async (file, pwd, algorithm, kdf) => {
         const tot = Math.ceil(file.size / C), comp = file.size < 100 * 1024 * 1024 && (file.type.startsWith('text/') || file.type === 'application/json');
-        const salt = crypto.getRandomValues(new Uint8Array(16)), sHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
+        const salt = crypto.getRandomValues(new Uint8Array(16));
         const cs = [], ivs = [], id = uid();
+
         let writ = activeBackend === 'OPFS' ? await (await getFhOPFS(id, true)).createWritable() : null;
         let chunks = [];
+
         for (let i = 0; i < tot; i++) {
             const c = await file.slice(i * C, Math.min((i + 1) * C, file.size)).arrayBuffer();
-            const iv = crypto.getRandomValues(new Uint8Array(12)), iHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
-            ivs.push(Array.from(iv));
-            const res = await processChunk({ chunk: c, compress: comp, password: pwd, saltHex: sHex, ivHex: iHex });
+            const res = await processChunk({
+                chunk: c, compress: comp, password: pwd, salt: salt, algorithm: algorithm, kdf: kdf
+            });
             cs.push(res.buf.byteLength);
+            if (res.iv) ivs.push(res.iv);
             if (writ) await writ.write(new Uint8Array(res.buf)); else chunks.push(new Uint8Array(res.buf));
         }
         if (writ) await writ.close(); else await writeBlob(id, new Blob(chunks));
-        return { id, salt: Array.from(salt), ivs, cs, comp, enc: !!pwd };
+        return { id, salt: Array.from(salt), ivs, cs, comp, enc: !!pwd, algorithm, kdf };
     };
 
     const thumb = async (f, t) => {
@@ -290,14 +318,15 @@
         });
     };
 
-    const add = async (f, pid, pwd) => {
+    const add = async (f, pid, pwd, algorithm = 'AES-GCM', kdf = 'pbkdf2') => {
         const id = uid(), n = await uniq(f.name || 'untitled', pid), th = pwd ? null : await thumb(f, f.type.startsWith('video/') ? 'video' : 'image');
-        const m = await proc(f, pwd);
+        const m = await proc(f, pwd, algorithm, kdf);
         const nd = {
             id: m.id, parentId: pid, name: n, kind: 'file', mime: f.type || 'application/octet-stream',
             size: f.size, compSize: m.cs.reduce((a, b) => a + b, 0), compressed: m.comp,
             encrypted: m.enc, salt: m.salt, ivs: m.ivs, chunkSizes: m.cs, pwdHash: pwd || null,
-            thumb: th, hash: await hashBlob(f), created: Date.now(), modified: f.lastModified || Date.now()
+            thumb: th, hash: await hashBlob(f), created: Date.now(), modified: f.lastModified || Date.now(),
+            algorithm: m.algorithm, kdf: m.kdf
         };
         await req(sto(N, 'readwrite').add(nd));
         return nd;
@@ -308,23 +337,33 @@
             let raw = await readBlob(nd.id);
             if (!raw) return null;
             let off = 0, ch = [];
-            const key = nd.encrypted ? await crypto.subtle.deriveKey(
-                { name: "PBKDF2", salt: new Uint8Array(nd.salt), iterations: 600000, hash: "SHA-256" },
-                await crypto.subtle.importKey("raw", new TextEncoder().encode(pwd), { name: "PBKDF2" }, false, ["deriveKey"]),
-                { name: "AES-GCM", length: 256 }, false, ["decrypt"]
-            ) : null;
+            const algorithm = nd.algorithm || 'AES-GCM';
+            const kdf = nd.kdf || 'pbkdf2';
+            
+            let key = null;
+            if (nd.encrypted) {
+                const keyBytes = await deriveKey(pwd, new Uint8Array(nd.salt), kdf, algorithm);
+                key = await crypto.subtle.importKey('raw', keyBytes, { name: algorithm }, false, ['decrypt']);
+            }
+
             for (let i = 0; i < nd.chunkSizes.length; i++) {
                 const sl = raw.slice(off, off + nd.chunkSizes[i]); off += nd.chunkSizes[i];
                 let b = await sl.arrayBuffer();
-                if (nd.encrypted) b = await crypto.subtle.decrypt({ name: "AES-GCM", iv: new Uint8Array(nd.ivs[i]) }, key, b);
+                if (nd.encrypted) {
+                    b = await crypto.subtle.decrypt({ name: algorithm, iv: new Uint8Array(nd.ivs[i]) }, key, b);
+                }
                 if (nd.compressed) {
-                    const ds = new DecompressionStream('gzip');
-                    b = await new Response(new Blob([b]).stream().pipeThrough(ds)).arrayBuffer();
+                    if (window.brotliWasm) {
+                        b = await window.brotliWasm.decompress(new Uint8Array(b));
+                    } else {
+                        const ds = new DecompressionStream('gzip');
+                        b = await new Response(new Blob([b]).stream().pipeThrough(ds)).arrayBuffer();
+                    }
                 }
                 ch.push(new Uint8Array(b));
             }
             return new Blob(ch, { type: nd.mime });
-        } catch (e) { return null; }
+        } catch (e) { console.error(e); return null; }
     };
 
     const del = async id => {
@@ -496,8 +535,8 @@
         };
     });
 
-    // NEW: Single file prompt
     const offer = nd => new Promise(res => {
+        const kdfOpts = getKdfOptions().map(o => `<option value="${o.id}">${o.label}</option>`).join('');
         const p = document.createElement('div'); p.className = 'toast-panel';
         p.innerHTML = `
             <div class="titlebar"><div class="title"><span class="logo"></span>Password Protect</div><div class="winbtns"><button class="close" id="tc">✕</button></div></div>
@@ -505,6 +544,13 @@
                 <p>Protect <b>${esc(nd.name)}</b>?</p>
                 <input type="password" id="tp" placeholder="Password">
                 <input type="text" id="th" placeholder="Hint (optional)">
+                <label style="font-size:10px;display:block;margin-bottom:4px;">KDF:</label>
+                <select id="tkdf">${kdfOpts}</select>
+                <label style="font-size:10px;display:block;margin-bottom:4px;">Cipher:</label>
+                <select id="talg">
+                    <option value="AES-GCM">AES-256-GCM (Fast)</option>
+                    <option value="ChaCha20-Poly1305">ChaCha20-Poly1305 (Modern)</option>
+                </select>
                 <label style="font-size:10px;display:block;margin-bottom:8px;"><input type="checkbox" id="tr"> Self-destruct (Read Once)</label>
                 <div class="toast-btns"><button class="btn" id="ts">Skip</button><button class="btn" id="tpr">Protect</button></div>
             </div>
@@ -513,11 +559,14 @@
         const tp = p.querySelector('#tp'); tp.focus();
         const cl = v => { p.remove(); res(v); };
         p.querySelector('#tc').onclick = p.querySelector('#ts').onclick = () => cl(null);
-        p.querySelector('#tpr').onclick = () => cl({ pwd: tp.value, hint: p.querySelector('#th').value, ro: p.querySelector('#tr').checked });
+        p.querySelector('#tpr').onclick = () => cl({
+            pwd: tp.value, hint: p.querySelector('#th').value, ro: p.querySelector('#tr').checked,
+            kdf: p.querySelector('#tkdf').value, algorithm: p.querySelector('#talg').value
+        });
     });
 
-    // NEW: Batch upload prompt
     const offerBatch = count => new Promise(res => {
+        const kdfOpts = getKdfOptions().map(o => `<option value="${o.id}">${o.label}</option>`).join('');
         const p = document.createElement('div'); p.className = 'toast-panel';
         p.innerHTML = `
             <div class="titlebar"><div class="title"><span class="logo"></span>Batch Protect</div><div class="winbtns"><button class="close" id="tc">✕</button></div></div>
@@ -525,6 +574,13 @@
                 <p>You are uploading <b>${count} files</b>.<br>Protect all of them with a single password?</p>
                 <input type="password" id="tp" placeholder="Password (leave blank to skip)">
                 <input type="text" id="th" placeholder="Hint (optional)">
+                <label style="font-size:10px;display:block;margin-bottom:4px;">KDF:</label>
+                <select id="tkdf">${kdfOpts}</select>
+                <label style="font-size:10px;display:block;margin-bottom:4px;">Cipher:</label>
+                <select id="talg">
+                    <option value="AES-GCM">AES-256-GCM (Fast)</option>
+                    <option value="ChaCha20-Poly1305">ChaCha20-Poly1305 (Modern)</option>
+                </select>
                 <label style="font-size:10px;display:block;margin-bottom:8px;"><input type="checkbox" id="tr"> Self-destruct (Read Once)</label>
                 <div class="toast-btns"><button class="btn" id="ts">Skip All</button><button class="btn" id="tpr">Apply to All</button></div>
             </div>
@@ -535,7 +591,7 @@
         p.querySelector('#tc').onclick = p.querySelector('#ts').onclick = () => cl('skip_all');
         p.querySelector('#tpr').onclick = () => {
             if (!tp.value) return cl('skip_all');
-            cl({ pwd: tp.value, hint: p.querySelector('#th').value, ro: p.querySelector('#tr').checked });
+            cl({ pwd: tp.value, hint: p.querySelector('#th').value, ro: p.querySelector('#tr').checked, kdf: p.querySelector('#tkdf').value, algorithm: p.querySelector('#talg').value });
         };
     });
 
@@ -549,28 +605,35 @@
             ['Web Crypto', c.webCrypto ? 'Supported' : 'Not available'], ['CompressionStream', c.compression ? 'Supported' : 'Not available'],
             ['Web Workers', c.workers ? 'Supported' : 'Not available'], ['LocalStorage', c.localStorage ? 'Available' : 'Blocked'],
             ['Active Backend', activeBackend || 'Detecting…'], ['Worker Status', wkrOK ? 'Running' : 'Main thread fallback'],
-            ['Default Theme', BROWSER_THEMES[b.name] || 'default']
+            ['Default Theme', BROWSER_THEMES[b.name] || 'default'],
+            ['ChaCha20-Poly1305', c.chacha ? 'Supported' : 'Not available']
         ];
         body.innerHTML = '<table class="prop-table">' + rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('') + `</table>`;
         modal.hidden = false;
     };
 
     // =========================================================================
-    // Complex Actions
+    // Complex Actions & Optimized Path Creation
     // =========================================================================
-    const ensureFolderPath = async (pathStr, parentId) => {
+    const ensureFolderPath = async (pathStr, parentId, cache) => {
         const parts = pathStr.split('/').filter(Boolean);
-        let currentParent = parentId;
+        let currentId = parentId;
         for (const part of parts) {
-            const siblings = await list(currentParent);
-            let folder = siblings.find(n => n.name === part && n.kind === 'folder');
-            if (!folder) {
-                folder = { id: uid(), parentId: currentParent, name: part, kind: 'folder', size: 0, compSize: 0, created: Date.now(), modified: Date.now() };
-                await req(sto(N, 'readwrite').add(folder));
+            const key = currentId + '::' + part;
+            if (cache && cache.has(key)) {
+                currentId = cache.get(key);
+            } else {
+                const siblings = await list(currentId);
+                let folder = siblings.find(n => n.name === part && n.kind === 'folder');
+                if (!folder) {
+                    folder = { id: uid(), parentId: currentId, name: part, kind: 'folder', size: 0, compSize: 0, created: Date.now(), modified: Date.now() };
+                    await req(sto(N, 'readwrite').add(folder));
+                }
+                if (cache) cache.set(key, folder.id);
+                currentId = folder.id;
             }
-            currentParent = folder.id;
         }
-        return currentParent;
+        return currentId;
     };
 
     const act = {
@@ -705,8 +768,9 @@
             <tr><td>Size</td><td>${fmtSz(n.size)} (Stored: ${fmtSz(n.compSize)})</td></tr>
             <tr><td>Created</td><td>${fmtDt(n.created)}</td></tr>
             <tr><td>Modified</td><td>${fmtDt(n.modified)}</td></tr>
-            <tr><td>Encrypted</td><td>${n.encrypted ? 'Yes (AES-256-GCM)' : 'No'}</td></tr>
-            <tr><td>Compressed</td><td>${n.compressed ? 'Yes (Gzip)' : 'No'}</td></tr>
+            <tr><td>Encrypted</td><td>${n.encrypted ? `Yes (${n.algorithm || 'AES-GCM'})` : 'No'}</td></tr>
+            <tr><td>KDF</td><td>${n.kdf || 'pbkdf2'}</td></tr>
+            <tr><td>Compressed</td><td>${n.compressed ? 'Yes (Brotli/Gzip)' : 'No'}</td></tr>
             <tr><td>SHA-256</td><td style="font-family:monospace;word-break:break-all;">${h}</td></tr>
         `;
         $('#prop-modal').hidden = false;
@@ -804,38 +868,81 @@
     };
 
     // =========================================================================
-    // Import & Drag-Drop Logic
+    // Robust Import & Drag-Drop Logic with Progress
     // =========================================================================
     let isMarquee = false, mqStart = { x: 0, y: 0 }, mqBox = null;
 
+    const updateProgressUI = (currFile, currIdx, total, bytesProcessed, totalBytes) => {
+        const percent = total === 0 ? 0 : Math.round((currIdx / total) * 100);
+        $('#upload-progress-bar').style.width = percent + '%';
+        $('#upload-status-text').textContent = `Uploading ${currIdx + 1} of ${total} files...`;
+        $('#upload-file-name').textContent = currFile;
+        $('#upload-stats').textContent = `${fmtSz(bytesProcessed)} / ${fmtSz(totalBytes)} (${percent}%)`;
+    };
+
     const imp = async (fs, preservePaths = false) => {
         if (!fs.length) return;
-        let sharedPwd = null, sharedHint = null, sharedRo = false, skipAll = false;
-
+        
+        let sharedPwd = null, sharedHint = null, sharedRo = false, sharedKdf = 'pbkdf2', sharedAlg = 'AES-GCM';
         if (fs.length > 1) {
             const res = await offerBatch(fs.length);
-            if (res === 'skip_all') skipAll = true;
-            else if (res) { sharedPwd = res.pwd; sharedHint = res.hint; sharedRo = res.ro; }
+            if (res !== 'skip_all' && res) { sharedPwd = res.pwd; sharedHint = res.hint; sharedRo = res.ro; sharedKdf = res.kdf; sharedAlg = res.algorithm; }
         } else if (fs.length === 1) {
             const o = await offer(fs[0]);
-            if (o) { sharedPwd = o.pwd; sharedHint = o.hint; sharedRo = o.ro; }
+            if (o) { sharedPwd = o.pwd; sharedHint = o.hint; sharedRo = o.ro; sharedKdf = o.kdf; sharedAlg = o.algorithm; }
         }
 
-        for (const f of fs) {
+        const progressModal = $('#upload-progress-modal');
+        progressModal.hidden = false;
+        
+        let totalBytes = fs.reduce((acc, f) => acc + f.size, 0);
+        let bytesProcessed = 0;
+        let failedFiles = [];
+        const pathCache = new Map();
+
+        // Sort files to group them by path, which reduces database lookups
+        if (preservePaths) {
+            fs.sort((a, b) => (a.webkitRelativePath || '').localeCompare(b.webkitRelativePath || ''));
+        }
+
+        for (let i = 0; i < fs.length; i++) {
+            const f = fs[i];
             let targetPid = st.cwd;
-            if (preservePaths && f.webkitRelativePath) {
-                const parts = f.webkitRelativePath.split('/');
-                parts.pop(); // remove filename
-                targetPid = await ensureFolderPath(parts.join('/'), st.cwd);
-            }
+            const relPath = f.webkitRelativePath || '';
+            const displayPath = relPath ? relPath : f.name;
+            
+            updateProgressUI(displayPath, i, fs.length, bytesProcessed, totalBytes);
+            await yieldUI(); // Allow UI to repaint
 
-            const pwdHash = sharedPwd ? await hashPwd(sharedPwd) : null;
-            const n = await add(f, targetPid, pwdHash);
-            if (sharedHint) { n.hint = sharedHint; await req(sto(N, 'readwrite').put(n)); }
-            if (sharedRo) { n.ro = true; await req(sto(N, 'readwrite').put(n)); }
+            try {
+                if (preservePaths && relPath) {
+                    const parts = relPath.split('/');
+                    parts.pop();
+                    targetPid = await ensureFolderPath(parts.join('/'), st.cwd, pathCache);
+                }
+
+                const pwdHash = sharedPwd ? await hashPwd(sharedPwd) : null;
+                const n = await add(f, targetPid, pwdHash, sharedAlg, sharedKdf);
+                
+                if (sharedHint) { n.hint = sharedHint; await req(sto(N, 'readwrite').put(n)); }
+                if (sharedRo) { n.ro = true; await req(sto(N, 'readwrite').put(n)); }
+                
+                bytesProcessed += f.size;
+            } catch (err) {
+                console.error("Failed to upload:", f.name, err);
+                failedFiles.push(displayPath);
+            }
         }
+
+        progressModal.hidden = true;
         await refresh();
-        stat('Upload complete.');
+        
+        if (failedFiles.length > 0) {
+            alert(`Upload completed with errors.\n${failedFiles.length} files failed to save:\n` + failedFiles.slice(0, 5).join('\n') + (failedFiles.length > 5 ? '\n...' : ''));
+            stat(`Upload partially complete. ${failedFiles.length} failed.`);
+        } else {
+            stat('Upload complete. All files saved successfully.');
+        }
     };
 
     const initWebRTC = () => {
@@ -930,7 +1037,7 @@
         $('#searchInput').oninput = e => { sQuery = e.target.value; refresh(); };
 
         $('#listbody').onclick = e => {
-            if (isMarquee) return; // handled by mouseup
+            if (isMarquee) return;
             const r = e.target.closest('.row');
             if (!r) {
                 if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { st.sel.clear(); render(); side(); }
@@ -1002,7 +1109,7 @@
                 st.sel = new Set([r.dataset.id]);
                 render(); side();
             }
-            dragId = r.dataset.id; // still set this to prevent marquee from triggering
+            dragId = r.dataset.id;
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', JSON.stringify(Array.from(st.sel)));
             r.style.opacity = '.5';
@@ -1036,7 +1143,7 @@
             try {
                 const ids = JSON.parse(data);
                 const targetId = r.dataset.id;
-                if (ids.includes(targetId)) return; // prevent dropping into itself
+                if (ids.includes(targetId)) return;
                 
                 const target = await node(targetId);
                 if (target.kind !== 'folder') return;
@@ -1092,11 +1199,12 @@
             try {
                 const buf = await f.arrayBuffer();
                 const unzipped = fflate.unzipSync(new Uint8Array(buf));
+                const pathCache = new Map();
                 for (const [path, data] of Object.entries(unzipped)) {
                     const parts = path.split('/');
                     const name = parts.pop();
-                    if (!name) continue; // skip directories
-                    const targetPid = await ensureFolderPath(parts.join('/'), st.cwd);
+                    if (!name) continue;
+                    const targetPid = await ensureFolderPath(parts.join('/'), st.cwd, pathCache);
                     const file = new File([new Blob([data])], name);
                     await add(file, targetPid, null);
                 }
@@ -1159,6 +1267,9 @@
         };
     };
 
+    // =========================================================================
+    // Performance & Bootstrap
+    // =========================================================================
     const initPerfWidget = () => {
         const memBtn = $('#btn-mem'), diskBtn = $('#btn-disk'), memBox = $('#mem-chart'), diskBox = $('#disk-chart');
         if (!memBtn || !diskBtn) return;

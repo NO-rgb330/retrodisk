@@ -7,45 +7,25 @@
     const detectBrowser = () => {
         const ua = navigator.userAgent || '';
         let name = 'Unknown', engine = 'Unknown', os = 'Unknown';
-
         if (/Firefox\/(\d+)/.test(ua)) name = 'Firefox';
         else if (/Edg\//.test(ua)) name = 'Edge';
         else if (/OPR\/|Opera/.test(ua)) name = 'Opera';
         else if (/Chrome\//.test(ua)) name = 'Chrome';
         else if (/Safari\//.test(ua) && !/Chrome/.test(ua)) name = 'Safari';
-
         if (/Gecko\//.test(ua) && /Firefox\//.test(ua)) engine = 'Gecko';
         else if (/AppleWebKit\//.test(ua) && /Chrome\//.test(ua)) engine = 'Blink';
         else if (/AppleWebKit\//.test(ua)) engine = 'WebKit';
         else if (/Trident\//.test(ua)) engine = 'Trident';
-
         if (/Windows/.test(ua)) os = 'Windows';
         else if (/Mac OS X|Macintosh/.test(ua)) os = 'macOS';
         else if (/Android/.test(ua)) os = 'Android';
         else if (/iPhone|iPad|iPod/.test(ua)) os = 'iOS';
         else if (/Linux/.test(ua)) os = 'Linux';
-
         return { name, engine, os, ua };
     };
 
-    const BROWSER_THEMES = {
-        Chrome: 'default',
-        Firefox: 'win98',
-        Safari: 'mac',
-        Edge: 'dark',
-        Opera: 'dark',
-        Unknown: 'default'
-    };
-
-    const BROWSER_LABELS = {
-        Chrome: 'Chrome',
-        Firefox: 'Firefox',
-        Safari: 'Safari',
-        Edge: 'Edge',
-        Opera: 'Opera',
-        Unknown: 'Browser'
-    };
-
+    const BROWSER_THEMES = { Chrome: 'default', Firefox: 'win98', Safari: 'mac', Edge: 'dark', Opera: 'dark', Unknown: 'default' };
+    const BROWSER_LABELS = { Chrome: 'Chrome', Firefox: 'Firefox', Safari: 'Safari', Edge: 'Edge', Opera: 'Opera', Unknown: 'Browser' };
     const THEME_KEY = 'rd9_theme';
     const browserInfo = detectBrowser();
 
@@ -57,14 +37,10 @@
         workers: typeof Worker !== 'undefined',
         localStorage: (() => { try { localStorage.setItem('__rd_t', '1'); localStorage.removeItem('__rd_t'); return true; } catch (e) { return false; } })(),
         fullscreen: !!(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen),
-        fileSystemAccess: typeof window.showOpenFilePicker === 'function',
         webrtc: typeof RTCPeerConnection !== 'undefined',
         storageEstimate: !!(navigator.storage && navigator.storage.estimate),
-        persist: !!(navigator.storage && navigator.storage.persist),
         indexedDB: !!window.indexedDB,
-        secureContext: window.isSecureContext,
-        serviceWorker: 'serviceWorker' in navigator,
-        offscreenCanvas: typeof OffscreenCanvas !== 'undefined'
+        secureContext: window.isSecureContext
     });
 
     const applyTheme = (theme, persist) => {
@@ -83,7 +59,6 @@
     // Constants & helpers
     // =========================================================================
     const DB = 'rd8', V = 1, N = 'n', R = 'r', O = 'opf8', C = 5 * 1024 * 1024, L = 5 * 60 * 1000;
-
     let db, opf = null, wkr = null, wkrOK = false;
     let st = { cwd: R, items: [], sel: new Set(), path: [], unlocked: new Set(), isGrid: false, hiddenVolume: false, quickAccess: [] };
     let EST = { usage: 0, quota: 0 }, purls = [], dlgRes = null, dragId = null, sCol = 'name', sAsc = true, sQuery = '', lockT, activeBackend = 'none', webrtcPC = null;
@@ -129,7 +104,7 @@
     };
 
     // =========================================================================
-    // Web Worker with graceful main-thread fallback
+    // Worker logic
     // =========================================================================
     const processChunkLocal = async ({ chunk, compress, password, saltHex, ivHex }) => {
         let buf = chunk;
@@ -156,21 +131,10 @@
 
     const initWorker = async () => {
         if (typeof Worker === 'undefined') { wkrOK = false; return; }
-        try {
-            wkr = new Worker('worker.js');
-        } catch (e) {
-            console.warn('Worker unavailable, using main thread fallback.', e);
-            wkrOK = false; wkr = null; return;
-        }
+        try { wkr = new Worker('worker.js'); } catch (e) { wkrOK = false; wkr = null; return; }
         wkrOK = await new Promise(res => {
             let done = false;
-            const finish = v => {
-                if (done) return; done = true;
-                clearTimeout(to);
-                wkr.removeEventListener('message', onMsg);
-                wkr.removeEventListener('error', onErr);
-                res(v);
-            };
+            const finish = v => { if (done) return; done = true; clearTimeout(to); wkr.removeEventListener('message', onMsg); wkr.removeEventListener('error', onErr); res(v); };
             const to = setTimeout(() => finish(false), 1500);
             const onMsg = () => finish(true);
             const onErr = () => finish(false);
@@ -178,33 +142,18 @@
             wkr.addEventListener('error', onErr);
             try { wkr.postMessage({}); } catch (e) { finish(false); }
         });
-        if (!wkrOK) {
-            try { wkr.terminate(); } catch (e) { }
-            wkr = null;
-            console.info('Worker.js not usable; running in main thread.');
-        } else {
-            wkr.onerror = () => { wkrOK = false; };
-        }
+        if (!wkrOK) { try { wkr.terminate(); } catch (e) { } wkr = null; }
+        else wkr.onerror = () => { wkrOK = false; };
     };
 
     const processChunk = (data) => new Promise((res, rej) => {
-        if (!wkrOK || !wkr) {
-            processChunkLocal(data).then(res).catch(rej);
-            return;
-        }
-        wkr.onmessage = e => {
-            if (e.data && e.data.ok) res(e.data);
-            else rej(new Error((e.data && e.data.error) || 'Worker processing failed'));
-        };
-        try { wkr.postMessage(data); }
-        catch (e) {
-            wkr.onmessage = null;
-            processChunkLocal(data).then(res).catch(rej);
-        }
+        if (!wkrOK || !wkr) { processChunkLocal(data).then(res).catch(rej); return; }
+        wkr.onmessage = e => { if (e.data && e.data.ok) res(e.data); else rej(new Error((e.data && e.data.error) || 'Worker failed')); };
+        try { wkr.postMessage(data); } catch (e) { wkr.onmessage = null; processChunkLocal(data).then(res).catch(rej); }
     });
 
     // =========================================================================
-    // File type registry & icons
+    // File System & Data abstractions
     // =========================================================================
     const EX = {
         image: ['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tif', 'tiff', 'avif'],
@@ -235,9 +184,6 @@
         return b;
     };
 
-    // =========================================================================
-    // Storage primitives
-    // =========================================================================
     const open = () => new Promise((res, rej) => {
         const r = indexedDB.open(DB, V);
         r.onupgradeneeded = e => {
@@ -311,32 +257,21 @@
         }
     };
 
-    // =========================================================================
-    // File processing (chunked, encrypted, compressed)
-    // =========================================================================
     const proc = async (file, pwd) => {
         const tot = Math.ceil(file.size / C), comp = file.size < 100 * 1024 * 1024 && (file.type.startsWith('text/') || file.type === 'application/json');
         const salt = crypto.getRandomValues(new Uint8Array(16)), sHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
         const cs = [], ivs = [], id = uid();
-
         let writ = activeBackend === 'OPFS' ? await (await getFhOPFS(id, true)).createWritable() : null;
         let chunks = [];
-
         for (let i = 0; i < tot; i++) {
             const c = await file.slice(i * C, Math.min((i + 1) * C, file.size)).arrayBuffer();
             const iv = crypto.getRandomValues(new Uint8Array(12)), iHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
             ivs.push(Array.from(iv));
-
             const res = await processChunk({ chunk: c, compress: comp, password: pwd, saltHex: sHex, ivHex: iHex });
-
             cs.push(res.buf.byteLength);
-            if (writ) await writ.write(new Uint8Array(res.buf));
-            else chunks.push(new Uint8Array(res.buf));
+            if (writ) await writ.write(new Uint8Array(res.buf)); else chunks.push(new Uint8Array(res.buf));
         }
-
-        if (writ) await writ.close();
-        else await writeBlob(id, new Blob(chunks));
-
+        if (writ) await writ.close(); else await writeBlob(id, new Blob(chunks));
         return { id, salt: Array.from(salt), ivs, cs, comp, enc: !!pwd };
     };
 
@@ -378,7 +313,6 @@
                 await crypto.subtle.importKey("raw", new TextEncoder().encode(pwd), { name: "PBKDF2" }, false, ["deriveKey"]),
                 { name: "AES-GCM", length: 256 }, false, ["decrypt"]
             ) : null;
-
             for (let i = 0; i < nd.chunkSizes.length; i++) {
                 const sl = raw.slice(off, off + nd.chunkSizes[i]); off += nd.chunkSizes[i];
                 let b = await sl.arrayBuffer();
@@ -416,13 +350,12 @@
     };
 
     // =========================================================================
-    // Rendering
+    // UI Rendering & Interaction
     // =========================================================================
     const render = () => {
         const b = $('#listbody');
         b.className = 'listbody ' + (st.isGrid ? 'grid' : 'list');
         const l = sQuery ? st.items.filter(n => n.name.toLowerCase().includes(sQuery.toLowerCase())) : st.items;
-
         l.sort((a, z) => {
             if (!sQuery && a.kind !== z.kind) return a.kind === 'folder' ? -1 : 1;
             const va = sCol === 'name' ? a.name : sCol === 'size' ? (a.size || 0) : (a.modified || 0);
@@ -431,7 +364,8 @@
         });
 
         document.querySelectorAll('.listheader .col').forEach(e => {
-            e.querySelector('.sort-arrow').textContent = e.dataset.sort === sCol ? (sAsc ? '▲' : '▼') : '';
+            const arrow = e.querySelector('.sort-arrow');
+            if (arrow) arrow.textContent = e.dataset.sort === sCol ? (sAsc ? '▲' : '▼') : '';
         });
 
         if (!l.length) {
@@ -441,6 +375,7 @@
 
         b.innerHTML = l.map(it => `
             <div class="row${st.sel.has(it.id) ? ' sel' : ''}" data-id="${it.id}" draggable="true">
+                <div class="col chk"><input type="checkbox" class="row-chk" ${st.sel.has(it.id) ? 'checked' : ''}></div>
                 <div class="col name"><span class="ico">${icon(it, st.isGrid ? 48 : 16)}</span><span class="label">${esc(it.name)}</span></div>
                 <div class="col type">${cat(it).label}</div>
                 <div class="col size">${it.kind === 'folder' ? '—' : fmtSz(it.size)}</div>
@@ -452,16 +387,12 @@
     const renderQuick = () => {
         const q = $('#quick-list');
         if (!q) return;
-        if (!st.quickAccess.length) {
-            q.innerHTML = '<span style="color:#888;font-size:10px;">No pinned items.</span>';
-            return;
-        }
+        if (!st.quickAccess.length) { q.innerHTML = '<span style="color:#888;font-size:10px;">No pinned items.</span>'; return; }
         q.innerHTML = st.quickAccess.map(id => {
             const n = st.items.find(i => i.id === id);
             if (!n) return '';
             return `<div class="quick-item" data-id="${id}">${IF(14)} <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(n.name)}</span></div>`;
         }).join('');
-
         q.querySelectorAll('.quick-item').forEach(el => {
             el.onclick = () => {
                 const n = st.items.find(i => i.id === el.dataset.id);
@@ -474,23 +405,19 @@
         const a = await req(sto(N).getAll());
         const f = a.filter(x => x.kind === 'file'), d = a.filter(x => x.kind === 'folder');
         const cb = a.reduce((x, n) => x + (n.compSize || n.size || 0), 0);
-
         if (navigator.storage && navigator.storage.estimate) EST = await navigator.storage.estimate();
         const q = EST.quota || 0, p = q ? Math.min(100, (cb / q) * 100) : 0;
-
         $('#meterFill').style.width = p + '%';
         $('#meterFill').style.background = p > 85 ? '#e79a8c' : p > 60 ? '#f0d27a' : '#96d873';
         $('#sbUsed').textContent = fmtSz(cb);
         $('#sbQuota').textContent = q ? fmtSz(q) : 'Unlimited';
         $('#sbCount').textContent = `${f.length} files, ${d.length} folders`;
         $('#stItems').textContent = st.items.length + ' objects';
-
         renderQuick();
     };
 
     const side = () => {
         const n = st.items.filter(i => st.sel.has(i.id)), one = n.length === 1 ? n[0] : null;
-
         if (one) {
             const r = (one.kind === 'file' && one.size) ? Math.round((1 - (one.compSize / one.size)) * 100) : 0;
             $('#sbSel').innerHTML = `<b>${esc(one.name)}</b><br>${cat(one).label}<br>${one.kind === 'folder' ? '—' : fmtSz(one.size)}${r > 0 ? `<br><span style="color:#4c9a2a">${r}% smaller</span>` : ''}`;
@@ -499,7 +426,6 @@
         } else {
             $('#sbSel').textContent = 'Nothing selected.';
         }
-
         const hf = n.some(i => i.kind === 'file');
         $('#sbPreview').disabled = !(one && one.kind === 'file');
         $('#sbDownload').disabled = !hf;
@@ -514,18 +440,14 @@
     const refresh = async () => {
         if (!db) return;
         st.items = sQuery ? await req(sto(N).getAll()) : await list(st.cwd);
-
         st.path = await (async function walk(id) {
             if (!id || id === R) return [];
             const n = await node(id);
             return n ? [...(await walk(n.parentId)), n] : [];
         })(st.cwd);
-
         const ids = new Set(st.items.map(i => i.id));
         st.sel = new Set(Array.from(st.sel).filter(i => ids.has(i)));
-
         $('#crumbs').innerHTML = `<span class="cr" data-id="${R}">${st.hiddenVolume ? 'Hidden Volume' : 'My Disk'}</span>` + st.path.map(n => `<span class="sep">▸</span><span class="cr" data-id="${n.id}">${esc(n.name)}</span>`).join('');
-
         render();
         await stats();
         side();
@@ -533,9 +455,6 @@
 
     const stat = m => $('#stMsg').textContent = m || 'Ready';
 
-    // =========================================================================
-    // Dialogs & password prompts
-    // =========================================================================
     const dlg = o => new Promise(res => {
         dlgRes = res;
         $('#dlgTitle').textContent = o.title || 'RetroDisk';
@@ -553,8 +472,6 @@
         if (dlgRes) { const r = dlgRes; dlgRes = null; r(v); }
     };
 
-    // Returns the SHA-256 hash of the entered password (matching nd.pwdHash)
-    // on success, or `false` on cancel / mismatch.
     const ask = nd => new Promise(res => {
         const b = document.createElement('div'); b.className = 'modal-back'; b.style.zIndex = '300';
         b.innerHTML = `
@@ -579,6 +496,7 @@
         };
     });
 
+    // NEW: Single file prompt
     const offer = nd => new Promise(res => {
         const p = document.createElement('div'); p.className = 'toast-panel';
         p.innerHTML = `
@@ -598,11 +516,66 @@
         p.querySelector('#tpr').onclick = () => cl({ pwd: tp.value, hint: p.querySelector('#th').value, ro: p.querySelector('#tr').checked });
     });
 
+    // NEW: Batch upload prompt
+    const offerBatch = count => new Promise(res => {
+        const p = document.createElement('div'); p.className = 'toast-panel';
+        p.innerHTML = `
+            <div class="titlebar"><div class="title"><span class="logo"></span>Batch Protect</div><div class="winbtns"><button class="close" id="tc">✕</button></div></div>
+            <div class="toast-body">
+                <p>You are uploading <b>${count} files</b>.<br>Protect all of them with a single password?</p>
+                <input type="password" id="tp" placeholder="Password (leave blank to skip)">
+                <input type="text" id="th" placeholder="Hint (optional)">
+                <label style="font-size:10px;display:block;margin-bottom:8px;"><input type="checkbox" id="tr"> Self-destruct (Read Once)</label>
+                <div class="toast-btns"><button class="btn" id="ts">Skip All</button><button class="btn" id="tpr">Apply to All</button></div>
+            </div>
+        `;
+        document.body.appendChild(p);
+        const tp = p.querySelector('#tp'); tp.focus();
+        const cl = v => { p.remove(); res(v); };
+        p.querySelector('#tc').onclick = p.querySelector('#ts').onclick = () => cl('skip_all');
+        p.querySelector('#tpr').onclick = () => {
+            if (!tp.value) return cl('skip_all');
+            cl({ pwd: tp.value, hint: p.querySelector('#th').value, ro: p.querySelector('#tr').checked });
+        };
+    });
+
+    const showCompatInfo = () => {
+        const modal = $('#compat-modal'), body = $('#compatBody');
+        if (!modal || !body) return;
+        const c = getCapabilities(), b = browserInfo;
+        const rows = [
+            ['Browser', b.name], ['Engine', b.engine], ['OS', b.os], ['Secure Context', c.secureContext ? 'Yes' : 'No'],
+            ['OPFS', c.opfs ? 'Supported' : 'Not available'], ['IndexedDB', c.indexedDB ? 'Supported' : 'Not available'],
+            ['Web Crypto', c.webCrypto ? 'Supported' : 'Not available'], ['CompressionStream', c.compression ? 'Supported' : 'Not available'],
+            ['Web Workers', c.workers ? 'Supported' : 'Not available'], ['LocalStorage', c.localStorage ? 'Available' : 'Blocked'],
+            ['Active Backend', activeBackend || 'Detecting…'], ['Worker Status', wkrOK ? 'Running' : 'Main thread fallback'],
+            ['Default Theme', BROWSER_THEMES[b.name] || 'default']
+        ];
+        body.innerHTML = '<table class="prop-table">' + rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('') + `</table>`;
+        modal.hidden = false;
+    };
+
     // =========================================================================
-    // Actions
+    // Complex Actions
     // =========================================================================
+    const ensureFolderPath = async (pathStr, parentId) => {
+        const parts = pathStr.split('/').filter(Boolean);
+        let currentParent = parentId;
+        for (const part of parts) {
+            const siblings = await list(currentParent);
+            let folder = siblings.find(n => n.name === part && n.kind === 'folder');
+            if (!folder) {
+                folder = { id: uid(), parentId: currentParent, name: part, kind: 'folder', size: 0, compSize: 0, created: Date.now(), modified: Date.now() };
+                await req(sto(N, 'readwrite').add(folder));
+            }
+            currentParent = folder.id;
+        }
+        return currentParent;
+    };
+
     const act = {
         upload: () => $('#fileInput').click(),
+        uploadfolder: () => $('#folderInput').click(),
         newfolder: () => dlg({ title: 'New Folder', label: 'Name:', value: 'New Folder' }).then(async n => {
             if (!n) return;
             const nd = { id: uid(), parentId: st.cwd, name: await uniq(n, st.cwd), kind: 'folder', size: 0, compSize: 0, created: Date.now(), modified: Date.now() };
@@ -671,45 +644,28 @@
             });
         },
         toggle_view: () => { st.isGrid = !st.isGrid; render(); },
-        theme_default: () => applyTheme('default'),
-        theme_win98: () => applyTheme('win98'),
-        theme_mac: () => applyTheme('mac'),
-        theme_dark: () => applyTheme('dark'),
+        theme_default: () => applyTheme('default'), theme_win98: () => applyTheme('win98'), theme_mac: () => applyTheme('mac'), theme_dark: () => applyTheme('dark'),
         hidden_volume: () => dlg({ title: 'Hidden Volume', label: 'Enter hidden master password:' }).then(async p => {
             if (!p) return;
             const h = await hashPwd(p);
             const stored = await req(sto('s').get('hiddenMaster'));
             if (stored && stored.v === h) {
-                st.hiddenVolume = !st.hiddenVolume;
-                await initStorage();
-                await refresh();
+                st.hiddenVolume = !st.hiddenVolume; await initStorage(); await refresh();
                 stat(st.hiddenVolume ? 'Hidden Volume Unlocked' : 'Switched to Public Volume');
             } else if (!stored) {
                 await req(sto('s', 'readwrite').put({ k: 'hiddenMaster', v: h }));
-                st.hiddenVolume = true;
-                await initStorage();
-                await refresh();
-                stat('Hidden Volume created and unlocked');
-            } else {
-                stat('Incorrect hidden password');
-            }
+                st.hiddenVolume = true; await initStorage(); await refresh(); stat('Hidden Volume created and unlocked');
+            } else { stat('Incorrect hidden password'); }
         }),
         lock: () => { st.unlocked.clear(); st.cwd = R; refresh(); },
         webrtc: () => { $('#webrtc-modal').hidden = false; },
         find_duplicates: async () => {
-            $('#dup-modal').hidden = false;
-            $('#dup-list').innerHTML = 'Scanning hashes...';
-            const all = await req(sto(N).getAll());
-            const files = all.filter(n => n.kind === 'file' && n.hash);
+            $('#dup-modal').hidden = false; $('#dup-list').innerHTML = 'Scanning hashes...';
+            const all = await req(sto(N).getAll()), files = all.filter(n => n.kind === 'file' && n.hash);
             const groups = {};
             files.forEach(f => { if (!groups[f.hash]) groups[f.hash] = []; groups[f.hash].push(f); });
             const dups = Object.values(groups).filter(g => g.length > 1);
-
-            if (!dups.length) {
-                $('#dup-list').innerHTML = '<div style="text-align:center;padding:20px;color:#888;">No duplicates found! Your disk is perfectly clean.</div>';
-                return;
-            }
-
+            if (!dups.length) { $('#dup-list').innerHTML = '<div style="text-align:center;padding:20px;color:#888;">No duplicates found!</div>'; return; }
             $('#dup-list').innerHTML = dups.map((g, i) => `
                 <div style="margin-bottom:15px;border:1px solid #ccc;padding:10px;border-radius:4px;background:#f9f9f9;">
                     <b>Group ${i + 1} (${fmtSz(g[0].size)})</b><br>
@@ -741,13 +697,8 @@
         if (!n) return;
         const p = n.pwdHash ? await ask(n) : null;
         if (n.pwdHash && !p) return;
-
         let h = n.hash || 'Calculating...';
-        if (!h && n.kind === 'file') {
-            const b = await getBlob(n, p);
-            if (b) h = await hashBlob(b);
-        }
-
+        if (!h && n.kind === 'file') { const b = await getBlob(n, p); if (b) h = await hashBlob(b); }
         $('#prop-table').innerHTML = `
             <tr><td>Name</td><td>${esc(n.name)}</td></tr>
             <tr><td>Type</td><td>${cat(n).label}</td></tr>
@@ -775,109 +726,75 @@
 
     const openImgEditor = async (n, b) => {
         $('#img-editor-modal').hidden = false;
-        const img = new Image();
-        img.src = URL.createObjectURL(b);
+        const img = new Image(); img.src = URL.createObjectURL(b);
         await new Promise(r => img.onload = r);
-
-        const c = $('#imgCanvas');
-        c.width = img.width; c.height = img.height;
-        const ctx = c.getContext('2d');
-        ctx.drawImage(img, 0, 0);
+        const c = $('#imgCanvas'); c.width = img.width; c.height = img.height;
+        const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
         let rot = 0;
-
         $('#imgRotate').onclick = () => {
-            rot = (rot + 90) % 360;
-            c.width = img.height; c.height = img.width;
-            ctx.translate(c.width / 2, c.height / 2);
-            ctx.rotate(rot * Math.PI / 180);
+            rot = (rot + 90) % 360; c.width = img.height; c.height = img.width;
+            ctx.translate(c.width / 2, c.height / 2); ctx.rotate(rot * Math.PI / 180);
             ctx.drawImage(img, -img.width / 2, -img.height / 2);
         };
-
         $('#imgSave').onclick = async () => {
             c.toBlob(async (blob) => {
                 const f = new File([blob], n.name, { type: 'image/jpeg' });
-                await del(n.id);
-                await add(f, n.parentId, n.pwdHash);
-                await refresh();
-                $('#img-editor-modal').hidden = true;
+                await del(n.id); await add(f, n.parentId, n.pwdHash);
+                await refresh(); $('#img-editor-modal').hidden = true;
             }, 'image/jpeg', 0.85);
         };
     };
 
     const prev = async n => {
-        $('#modal').hidden = false;
-        $('#modalTitle').textContent = n.name;
-        $('#modalSaveBtn').hidden = true;
-        $('#modalSaveAsBtn').hidden = true;
-
+        $('#modal').hidden = false; $('#modalTitle').textContent = n.name;
+        $('#modalSaveBtn').hidden = true; $('#modalSaveAsBtn').hidden = true;
         const p = n.pwdHash ? await ask(n) : null;
         if (n.pwdHash && !p) { $('#modal').hidden = true; return; }
-
         const b = await getBlob(n, p);
         if (!b) { $('#modalBody').innerHTML = '<div class="nopreview">Decryption failed.</div>'; return; }
-
-        const c = cat(n).cat, u = URL.createObjectURL(b);
-        purls.push(u);
-
+        const c = cat(n).cat, u = URL.createObjectURL(b); purls.push(u);
         if (['image', 'video', 'audio'].includes(c)) {
             if (c === 'image') {
-                $('#modalSaveAsBtn').hidden = false;
-                $('#modalSaveAsBtn').textContent = 'Edit Image';
+                $('#modalSaveAsBtn').hidden = false; $('#modalSaveAsBtn').textContent = 'Edit Image';
                 $('#modalSaveAsBtn').onclick = () => openImgEditor(n, b);
             }
-
             $('#modalBody').innerHTML = `<${c} controls autoplay src="${u}"></${c}>`;
-
             if (c === 'audio') {
                 const audioQueue = st.items.filter(i => cat(i).cat === 'audio');
                 const audioIndex = audioQueue.findIndex(i => i.id === n.id);
                 const audioEl = $('#modalBody audio');
-                if (audioEl) {
-                    audioEl.onended = () => {
-                        if (audioIndex < audioQueue.length - 1) prev(audioQueue[audioIndex + 1]);
-                    };
-                }
+                if (audioEl) audioEl.onended = () => { if (audioIndex < audioQueue.length - 1) prev(audioQueue[audioIndex + 1]); };
             }
         } else if (c === 'pdf') {
             $('#modalBody').innerHTML = `<iframe src="${u}"></iframe>`;
         } else if (c === 'text') {
-            const text = await b.text();
-            const ext = n.name.split('.').pop().toLowerCase();
-
+            const text = await b.text(), ext = n.name.split('.').pop().toLowerCase();
             if (ext === 'md' || ext === 'markdown') {
                 $('#modalBody').innerHTML = '<div class="markdown-view"></div>';
                 if (typeof marked !== 'undefined') $('#modalBody .markdown-view').innerHTML = marked.parse(text);
                 else $('#modalBody .markdown-view').innerText = text;
-                $('#modalSaveBtn').hidden = false;
-                $('#modalSaveBtn').textContent = 'Edit Raw';
+                $('#modalSaveBtn').hidden = false; $('#modalSaveBtn').textContent = 'Edit Raw';
                 $('#modalSaveBtn').onclick = () => {
                     $('#modalBody').innerHTML = `<textarea class="editor" spellcheck="false">${esc(text)}</textarea>`;
                     $('#modalSaveBtn').textContent = 'Save';
                     $('#modalSaveBtn').onclick = async () => {
                         const f = new File([$('#modalBody textarea').value], n.name, { type: n.mime });
-                        await del(n.id);
-                        await add(f, n.parentId, p || null);
-                        await refresh();
-                        $('#modal').hidden = true;
+                        await del(n.id); await add(f, n.parentId, p || null);
+                        await refresh(); $('#modal').hidden = true;
                     };
                 };
             } else {
                 const lang = ext === 'js' ? 'javascript' : ext === 'py' ? 'python' : ext === 'html' ? 'html' : ext === 'css' ? 'css' : 'plaintext';
                 $('#modalBody').innerHTML = `<div style="flex:1;align-self:stretch;overflow:auto;background:#10151a;padding:16px;"><pre style="margin:0;"><code class="language-${lang}">${esc(text)}</code></pre></div>`;
-                if (typeof hljs !== 'undefined') {
-                    try { hljs.highlightElement($('#modalBody code')); } catch (e) { }
-                }
-                $('#modalSaveBtn').hidden = false;
-                $('#modalSaveBtn').textContent = 'Edit';
+                if (typeof hljs !== 'undefined') { try { hljs.highlightElement($('#modalBody code')); } catch (e) { } }
+                $('#modalSaveBtn').hidden = false; $('#modalSaveBtn').textContent = 'Edit';
                 $('#modalSaveBtn').onclick = () => {
                     $('#modalBody').innerHTML = `<textarea class="editor" spellcheck="false">${esc(text)}</textarea>`;
                     $('#modalSaveBtn').textContent = 'Save';
                     $('#modalSaveBtn').onclick = async () => {
                         const f = new File([$('#modalBody textarea').value], n.name, { type: n.mime });
-                        await del(n.id);
-                        await add(f, n.parentId, p || null);
-                        await refresh();
-                        $('#modal').hidden = true;
+                        await del(n.id); await add(f, n.parentId, p || null);
+                        await refresh(); $('#modal').hidden = true;
                     };
                 };
             }
@@ -887,82 +804,61 @@
     };
 
     // =========================================================================
-    // WebRTC
+    // Import & Drag-Drop Logic
     // =========================================================================
+    let isMarquee = false, mqStart = { x: 0, y: 0 }, mqBox = null;
+
+    const imp = async (fs, preservePaths = false) => {
+        if (!fs.length) return;
+        let sharedPwd = null, sharedHint = null, sharedRo = false, skipAll = false;
+
+        if (fs.length > 1) {
+            const res = await offerBatch(fs.length);
+            if (res === 'skip_all') skipAll = true;
+            else if (res) { sharedPwd = res.pwd; sharedHint = res.hint; sharedRo = res.ro; }
+        } else if (fs.length === 1) {
+            const o = await offer(fs[0]);
+            if (o) { sharedPwd = o.pwd; sharedHint = o.hint; sharedRo = o.ro; }
+        }
+
+        for (const f of fs) {
+            let targetPid = st.cwd;
+            if (preservePaths && f.webkitRelativePath) {
+                const parts = f.webkitRelativePath.split('/');
+                parts.pop(); // remove filename
+                targetPid = await ensureFolderPath(parts.join('/'), st.cwd);
+            }
+
+            const pwdHash = sharedPwd ? await hashPwd(sharedPwd) : null;
+            const n = await add(f, targetPid, pwdHash);
+            if (sharedHint) { n.hint = sharedHint; await req(sto(N, 'readwrite').put(n)); }
+            if (sharedRo) { n.ro = true; await req(sto(N, 'readwrite').put(n)); }
+        }
+        await refresh();
+        stat('Upload complete.');
+    };
+
     const initWebRTC = () => {
-        if (typeof RTCPeerConnection === 'undefined') { alert('WebRTC is not available in this browser.'); return; }
+        if (typeof RTCPeerConnection === 'undefined') { alert('WebRTC is not available.'); return; }
         webrtcPC = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
         webrtcPC.onicecandidate = e => { if (e.candidate) $('#webrtcOutput').value += JSON.stringify(e.candidate) + '\n'; };
         webrtcPC.ondatachannel = e => { e.channel.onmessage = m => stat('Received: ' + m.data); };
     };
 
     // =========================================================================
-    // System & Browser Info dialog
-    // =========================================================================
-    const showCompatInfo = () => {
-        const modal = $('#compat-modal');
-        const body = $('#compatBody');
-        if (!modal || !body) {
-            alert('RetroDisk 9.0\nBrowser: ' + browserInfo.name + ' (' + browserInfo.engine + ')\nOS: ' + browserInfo.os);
-            return;
-        }
-        const c = getCapabilities();
-        const b = browserInfo;
-        const rows = [
-            ['Browser', b.name],
-            ['Engine', b.engine],
-            ['OS', b.os],
-            ['Secure Context', c.secureContext ? 'Yes' : 'No'],
-            ['OPFS', c.opfs ? 'Supported' : 'Not available'],
-            ['IndexedDB', c.indexedDB ? 'Supported' : 'Not available'],
-            ['Web Crypto', c.webCrypto ? 'Supported' : 'Not available'],
-            ['CompressionStream', c.compression ? 'Supported' : 'Not available'],
-            ['DecompressionStream', c.decompression ? 'Supported' : 'Not available'],
-            ['Web Workers', c.workers ? 'Supported' : 'Not available'],
-            ['LocalStorage', c.localStorage ? 'Available' : 'Blocked'],
-            ['Fullscreen API', c.fullscreen ? 'Supported' : 'Not available'],
-            ['WebRTC', c.webrtc ? 'Supported' : 'Not available'],
-            ['Storage Estimate', c.storageEstimate ? 'Supported' : 'Not available'],
-            ['Persistent Storage', c.persist ? 'Supported' : 'Not available'],
-            ['File System Access', c.fileSystemAccess ? 'Supported' : 'Not available'],
-            ['OffscreenCanvas', c.offscreenCanvas ? 'Supported' : 'Not available'],
-            ['Active Backend', activeBackend || 'Detecting…'],
-            ['Worker Status', wkrOK ? 'Running in background thread' : 'Falling back to main thread'],
-            ['Default Theme', BROWSER_THEMES[b.name] || 'default']
-        ];
-        body.innerHTML = '<table class="prop-table">' + rows.map(([k, v]) =>
-            `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`
-        ).join('') + `</table>
-        <div style="margin-top:14px;font-size:11px;color:var(--tx-m);word-break:break-all;line-height:1.5;">User-Agent:<br>${esc(b.ua)}</div>`;
-        modal.hidden = false;
-    };
-
-    // =========================================================================
-    // Event binding
+    // Main Event Binds
     // =========================================================================
     const bind = () => {
-        // Browser badge (status bar)
         const badge = $('#browserBadge');
-        if (badge) {
-            badge.onclick = showCompatInfo;
-            badge.textContent = BROWSER_LABELS[browserInfo.name] + ' · ' + browserInfo.engine;
-            badge.title = 'Click for browser & capability info';
-        }
-        // Compat modal buttons (if present)
-        const compatClose = $('#compatClose'), compatOk = $('#compatOk');
-        if (compatClose) compatClose.onclick = () => { const m = $('#compat-modal'); if (m) m.hidden = true; };
-        if (compatOk) compatOk.onclick = () => { const m = $('#compat-modal'); if (m) m.hidden = true; };
+        if (badge) { badge.onclick = showCompatInfo; badge.textContent = BROWSER_LABELS[browserInfo.name]; }
+        if ($('#compatClose')) $('#compatClose').onclick = () => $('#compat-modal').hidden = true;
+        if ($('#compatOk')) $('#compatOk').onclick = () => $('#compat-modal').hidden = true;
 
-        // Dynamically add "System Info" to the Tools menu if not present
         const toolsAnchor = document.querySelector('.menu .dropdown .mi[data-act="webrtc"]');
-        if (toolsAnchor && toolsAnchor.parentElement) {
-            const parent = toolsAnchor.parentElement;
-            if (!parent.querySelector('[data-act="sysinfo"]')) {
-                const sep = document.createElement('div'); sep.className = 'mi sep';
-                const item = document.createElement('div'); item.className = 'mi';
-                item.dataset.act = 'sysinfo'; item.textContent = 'System & Browser Info…';
-                parent.appendChild(sep); parent.appendChild(item);
-            }
+        if (toolsAnchor && toolsAnchor.parentElement && !toolsAnchor.parentElement.querySelector('[data-act="sysinfo"]')) {
+            const sep = document.createElement('div'); sep.className = 'mi sep';
+            const item = document.createElement('div'); item.className = 'mi'; item.dataset.act = 'sysinfo'; item.textContent = 'System Info…';
+            toolsAnchor.parentElement.appendChild(sep); toolsAnchor.parentElement.appendChild(item);
         }
 
         if ($('#btnFullscreen')) $('#btnFullscreen').onclick = toggleFullscreen;
@@ -983,30 +879,20 @@
         }
 
         document.addEventListener('click', e => {
-            if (!e.target.closest('#menubar')) {
-                $('#menubar').querySelectorAll('.menu').forEach(x => x.classList.remove('open'));
-            }
-            if (!e.target.closest('#ctx-menu')) {
-                $('#ctx-menu').style.display = 'none';
-            }
+            if (!e.target.closest('#menubar')) $('#menubar').querySelectorAll('.menu').forEach(x => x.classList.remove('open'));
+            if (!e.target.closest('#ctx-menu')) $('#ctx-menu').style.display = 'none';
             const b = e.target.closest('[data-act]');
-            if (b && !b.closest('#menubar') && act[b.dataset.act] && !b.disabled) {
-                act[b.dataset.act]();
-            }
+            if (b && !b.closest('#menubar') && act[b.dataset.act] && !b.disabled) act[b.dataset.act]();
         });
 
         document.addEventListener('contextmenu', e => {
             const r = e.target.closest('.row');
             if (!r) return;
             e.preventDefault();
-            if (!st.sel.has(r.dataset.id)) {
-                st.sel = new Set([r.dataset.id]);
-                render(); side();
-            }
+            if (!st.sel.has(r.dataset.id)) { st.sel = new Set([r.dataset.id]); render(); side(); }
             const c = $('#ctx-menu');
             c.style.display = 'block';
-            c.style.left = e.pageX + 'px';
-            c.style.top = e.pageY + 'px';
+            c.style.left = e.pageX + 'px'; c.style.top = e.pageY + 'px';
         });
 
         $('#ctx-menu').addEventListener('click', async e => {
@@ -1014,38 +900,22 @@
             if (a === 'open') {
                 const n = st.items.find(i => i.id === Array.from(st.sel)[0]);
                 if (n) n.kind === 'folder' ? nav(n.id) : prev(n);
-            } else if (a === 'properties') {
-                showProps();
-            } else if (a === 'quickaccess') {
-                Array.from(st.sel).forEach(id => {
-                    if (!st.quickAccess.includes(id)) st.quickAccess.push(id);
-                });
-                renderQuick();
-            } else if (a === 'tag') {
+            } else if (a === 'properties') showProps();
+            else if (a === 'quickaccess') { Array.from(st.sel).forEach(id => { if (!st.quickAccess.includes(id)) st.quickAccess.push(id); }); renderQuick(); }
+            else if (a === 'tag') {
                 const col = prompt('Enter color (hex like #ff0000, or "none" to remove):');
                 if (col) {
                     for (const id of st.sel) {
                         const n = st.items.find(i => i.id === id);
-                        if (n) {
-                            n.tag = col === 'none' ? null : col;
-                            await req(sto(N, 'readwrite').put(n));
-                        }
+                        if (n) { n.tag = col === 'none' ? null : col; await req(sto(N, 'readwrite').put(n)); }
                     }
                     await refresh();
                 }
             } else if (a === 'img_edit') {
                 const n = st.items.find(i => i.id === Array.from(st.sel)[0]);
-                if (n) {
-                    ask(n).then(async p => {
-                        const b = await getBlob(n, p);
-                        if (b) openImgEditor(n, b);
-                    });
-                }
-            } else if (a === 'batchrename') {
-                act.batchrename();
-            } else if (act[a]) {
-                act[a]();
-            }
+                if (n) ask(n).then(async p => { const b = await getBlob(n, p); if (b) openImgEditor(n, b); });
+            } else if (a === 'batchrename') act.batchrename();
+            else if (act[a]) act[a]();
             $('#ctx-menu').style.display = 'none';
         });
 
@@ -1060,27 +930,81 @@
         $('#searchInput').oninput = e => { sQuery = e.target.value; refresh(); };
 
         $('#listbody').onclick = e => {
+            if (isMarquee) return; // handled by mouseup
             const r = e.target.closest('.row');
-            if (!r) { st.sel.clear(); render(); side(); return; }
+            if (!r) {
+                if (!e.ctrlKey && !e.metaKey && !e.shiftKey) { st.sel.clear(); render(); side(); }
+                return;
+            }
             const id = r.dataset.id;
-            if (e.ctrlKey || e.metaKey) st.sel.has(id) ? st.sel.delete(id) : st.sel.add(id);
-            else st.sel = new Set([id]);
-            render(); side();
+            if (e.target.classList.contains('row-chk')) {
+                if (e.target.checked) st.sel.add(id); else st.sel.delete(id);
+                render(); side();
+            } else {
+                if (e.ctrlKey || e.metaKey) st.sel.has(id) ? st.sel.delete(id) : st.sel.add(id);
+                else st.sel = new Set([id]);
+                render(); side();
+            }
         };
 
         $('#listbody').ondblclick = e => {
+            if (isMarquee || e.target.classList.contains('row-chk')) return;
             const r = e.target.closest('.row');
             if (!r) return;
             const n = st.items.find(i => i.id === r.dataset.id);
             if (n) n.kind === 'folder' ? nav(n.id) : prev(n);
         };
 
+        // ===== MARQUEE SELECTION =====
+        $('#listbody').addEventListener('mousedown', e => {
+            if (e.target.closest('.row') || e.button !== 0) return;
+            isMarquee = true;
+            const rect = $('#listbody').getBoundingClientRect();
+            mqStart = { x: e.clientX - rect.left + $('#listbody').scrollLeft, y: e.clientY - rect.top + $('#listbody').scrollTop };
+            mqBox = document.createElement('div'); mqBox.className = 'marquee-box';
+            Object.assign(mqBox.style, { left: mqStart.x + 'px', top: mqStart.y + 'px', width: '0', height: '0' });
+            $('#listbody').appendChild(mqBox);
+            if (!e.ctrlKey && !e.metaKey) { st.sel.clear(); render(); side(); }
+        });
+
+        window.addEventListener('mousemove', e => {
+            if (!isMarquee || !mqBox) return;
+            const rect = $('#listbody').getBoundingClientRect();
+            const curX = e.clientX - rect.left + $('#listbody').scrollLeft;
+            const curY = e.clientY - rect.top + $('#listbody').scrollTop;
+            const left = Math.min(mqStart.x, curX), top = Math.min(mqStart.y, curY);
+            const width = Math.abs(curX - mqStart.x), height = Math.abs(curY - mqStart.y);
+            Object.assign(mqBox.style, { left: left + 'px', top: top + 'px', width: width + 'px', height: height + 'px' });
+        });
+
+        window.addEventListener('mouseup', e => {
+            if (!isMarquee) return;
+            isMarquee = false;
+            if (mqBox) {
+                const bRect = mqBox.getBoundingClientRect();
+                const rows = $('#listbody').querySelectorAll('.row');
+                rows.forEach(r => {
+                    const rRect = r.getBoundingClientRect();
+                    if (!(bRect.right < rRect.left || bRect.left > rRect.right || bRect.bottom < rRect.top || bRect.top > rRect.bottom)) {
+                        st.sel.add(r.dataset.id);
+                    }
+                });
+                mqBox.remove(); mqBox = null;
+                render(); side();
+            }
+        });
+
+        // ===== DRAG AND DROP =====
         $('#listbody').ondragstart = e => {
             const r = e.target.closest('.row');
             if (!r) return e.preventDefault();
-            dragId = r.dataset.id;
+            if (!st.sel.has(r.dataset.id)) {
+                st.sel = new Set([r.dataset.id]);
+                render(); side();
+            }
+            dragId = r.dataset.id; // still set this to prevent marquee from triggering
             e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', dragId);
+            e.dataTransfer.setData('text/plain', JSON.stringify(Array.from(st.sel)));
             r.style.opacity = '.5';
         };
 
@@ -1094,7 +1018,7 @@
         $('#listbody').ondragover = e => {
             if (!dragId) return;
             const r = e.target.closest('.row');
-            if (!r || r.dataset.id === dragId || st.items.find(i => i.id === r.dataset.id)?.kind !== 'folder') return;
+            if (!r || st.sel.has(r.dataset.id) || st.items.find(i => i.id === r.dataset.id)?.kind !== 'folder') return;
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
             $('#listbody').querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
@@ -1102,18 +1026,32 @@
         };
 
         $('#listbody').ondrop = async e => {
-            const d = dragId;
+            const data = e.dataTransfer.getData('text/plain');
+            const r = e.target.closest('.row');
             dragId = null;
             $('#listbody').querySelectorAll('.drag-over').forEach(x => x.classList.remove('drag-over'));
-            const r = e.target.closest('.row');
-            if (d && r && r.dataset.id !== d) {
-                e.preventDefault(); e.stopPropagation();
-                const n = await node(d);
-                n.parentId = r.dataset.id;
-                n.name = await uniq(n.name, r.dataset.id);
-                await req(sto(N, 'readwrite').put(n));
+            if (!r || !data) return;
+            e.preventDefault(); e.stopPropagation();
+            
+            try {
+                const ids = JSON.parse(data);
+                const targetId = r.dataset.id;
+                if (ids.includes(targetId)) return; // prevent dropping into itself
+                
+                const target = await node(targetId);
+                if (target.kind !== 'folder') return;
+
+                for (const id of ids) {
+                    const n = await node(id);
+                    if (n && n.id !== targetId) {
+                        n.parentId = targetId;
+                        n.name = await uniq(n.name, targetId);
+                        await req(sto(N, 'readwrite').put(n));
+                    }
+                }
+                st.sel.clear();
                 await refresh();
-            }
+            } catch (err) { }
         };
 
         ['dragenter', 'dragover'].forEach(v => $('#listbody').addEventListener(v, e => {
@@ -1138,126 +1076,81 @@
         window.ondrop = e => e.preventDefault();
 
         $('#modalClose').onclick = $('#modalOk').onclick = () => {
-            $('#modal').hidden = true;
-            $('#modalBody').innerHTML = '';
-            purls.forEach(u => URL.revokeObjectURL(u));
-            purls = [];
+            $('#modal').hidden = true; $('#modalBody').innerHTML = '';
+            purls.forEach(u => URL.revokeObjectURL(u)); purls = [];
         };
 
-        $('#dlgOk').onclick = () => {
-            const i = $('#dlgInput');
-            if (i) dlgCl(i.value.trim() || null);
-            else dlgCl(true);
-        };
+        $('#dlgOk').onclick = () => { const i = $('#dlgInput'); if (i) dlgCl(i.value.trim() || null); else dlgCl(true); };
         $('#dlgCancel').onclick = $('#dlgX').onclick = () => dlgCl(null);
 
         $('#fileInput').onchange = e => { imp(Array.from(e.target.files)); e.target.value = ''; };
-
+        $('#folderInput').onchange = e => { imp(Array.from(e.target.files), true); e.target.value = ''; };
+        
         $('#zipInput').onchange = async e => {
             const f = e.target.files[0];
             if (!f) return;
-            const buf = await f.arrayBuffer();
-            const unzipped = fflate.unzipSync(new Uint8Array(buf));
-            for (const [name, data] of Object.entries(unzipped)) {
-                const blob = new Blob([data]);
-                const file = new File([blob], name);
-                await add(file, st.cwd, null);
-            }
-            await refresh();
+            try {
+                const buf = await f.arrayBuffer();
+                const unzipped = fflate.unzipSync(new Uint8Array(buf));
+                for (const [path, data] of Object.entries(unzipped)) {
+                    const parts = path.split('/');
+                    const name = parts.pop();
+                    if (!name) continue; // skip directories
+                    const targetPid = await ensureFolderPath(parts.join('/'), st.cwd);
+                    const file = new File([new Blob([data])], name);
+                    await add(file, targetPid, null);
+                }
+                await refresh();
+                stat('ZIP extracted successfully.');
+            } catch (err) { alert('Invalid or corrupted ZIP file.'); }
             e.target.value = '';
-            stat('ZIP extracted');
         };
 
         $('#sbDelete').onclick = act.delete;
         $('#sbDownload').onclick = act.download;
         if ($('#sbDownloadZip')) $('#sbDownloadZip').onclick = act.downloadzip;
-        $('#sbPreview').onclick = () => {
-            const n = st.items.find(i => i.id === Array.from(st.sel)[0]);
-            if (n) prev(n);
-        };
+        $('#sbPreview').onclick = () => { const n = st.items.find(i => i.id === Array.from(st.sel)[0]); if (n) prev(n); };
 
         $('#propClose').onclick = $('#propOk').onclick = () => $('#prop-modal').hidden = true;
         $('#webrtcClose').onclick = $('#webrtcOk').onclick = () => $('#webrtc-modal').hidden = true;
-
-        $('#webrtcGenerate').onclick = async () => {
-            initWebRTC();
-            if (!webrtcPC) return;
-            webrtcPC.createDataChannel('file');
-            const offer = await webrtcPC.createOffer();
-            await webrtcPC.setLocalDescription(offer);
-            $('#webrtcOutput').value = JSON.stringify(offer);
-        };
-
-        $('#webrtcAccept').onclick = async () => {
-            initWebRTC();
-            if (!webrtcPC) return;
-            try {
-                const offer = JSON.parse($('#webrtcInput').value);
-                await webrtcPC.setRemoteDescription(offer);
-                const answer = await webrtcPC.createAnswer();
-                await webrtcPC.setLocalDescription(answer);
-                $('#webrtcOutput').value = JSON.stringify(answer);
-            } catch (err) { alert('Invalid offer JSON.'); }
-        };
+        $('#webrtcGenerate').onclick = async () => { initWebRTC(); if (!webrtcPC) return; webrtcPC.createDataChannel('file'); const offer = await webrtcPC.createOffer(); await webrtcPC.setLocalDescription(offer); $('#webrtcOutput').value = JSON.stringify(offer); };
+        $('#webrtcAccept').onclick = async () => { initWebRTC(); if (!webrtcPC) return; try { const offer = JSON.parse($('#webrtcInput').value); await webrtcPC.setRemoteDescription(offer); const answer = await webrtcPC.createAnswer(); await webrtcPC.setLocalDescription(answer); $('#webrtcOutput').value = JSON.stringify(answer); } catch (err) { alert('Invalid offer JSON.'); } };
 
         $('#imgClose').onclick = () => $('#img-editor-modal').hidden = true;
-
         $('#stegClose').onclick = $('#stegOk').onclick = () => $('#steg-modal').hidden = true;
-
         $('#stegHide').onclick = async () => {
-            const file = $('#stegImg').files[0];
-            const text = $('#stegText').value;
+            const file = $('#stegImg').files[0], text = $('#stegText').value;
             if (!file || !text) return alert('Select image and text');
-            const img = new Image(); img.src = URL.createObjectURL(file);
-            await new Promise(r => img.onload = r);
+            const img = new Image(); img.src = URL.createObjectURL(file); await new Promise(r => img.onload = r);
             const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
             const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
-            const id = ctx.getImageData(0, 0, c.width, c.height);
-            const data = id.data;
+            const id = ctx.getImageData(0, 0, c.width, c.height), data = id.data;
             const bin = text.split('').map(ch => ch.charCodeAt(0).toString(2).padStart(8, '0')).join('') + '00000000';
             if (bin.length > data.length) return alert('Text too long for image');
             for (let i = 0; i < bin.length; i++) data[i] = (data[i] & 0xFE) | parseInt(bin[i]);
             ctx.putImageData(id, 0, 0);
-            c.toBlob(async b => {
-                const f = new File([b], 'secret_' + file.name, { type: 'image/png' });
-                await add(f, st.cwd, null);
-                await refresh();
-                alert('Image saved with hidden text!');
-            }, 'image/png');
+            c.toBlob(async b => { const f = new File([b], 'secret_' + file.name, { type: 'image/png' }); await add(f, st.cwd, null); await refresh(); alert('Image saved!'); }, 'image/png');
         };
-
         $('#stegExtract').onclick = async () => {
-            const file = $('#stegImg').files[0];
-            if (!file) return alert('Select image');
-            const img = new Image(); img.src = URL.createObjectURL(file);
-            await new Promise(r => img.onload = r);
+            const file = $('#stegImg').files[0]; if (!file) return alert('Select image');
+            const img = new Image(); img.src = URL.createObjectURL(file); await new Promise(r => img.onload = r);
             const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
             const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
-            const id = ctx.getImageData(0, 0, c.width, c.height);
-            const data = id.data;
+            const id = ctx.getImageData(0, 0, c.width, c.height), data = id.data;
             let bin = '', text = '';
             for (let i = 0; i < data.length; i += 8) {
-                let byte = '';
-                for (let j = 0; j < 8; j++) byte += (data[i + j] & 1);
+                let byte = ''; for (let j = 0; j < 8; j++) byte += (data[i + j] & 1);
                 bin += byte;
-                if (bin.length === 8) {
-                    const charCode = parseInt(bin, 2);
-                    if (charCode === 0) break;
-                    text += String.fromCharCode(charCode);
-                    bin = '';
-                }
+                if (bin.length === 8) { const cc = parseInt(bin, 2); if (cc === 0) break; text += String.fromCharCode(cc); bin = ''; }
             }
             alert('Extracted Text:\n' + text);
         };
 
         $('#dupClose').onclick = $('#dupOk').onclick = () => $('#dup-modal').hidden = true;
         $('#dupClean').onclick = async () => {
-            const chks = document.querySelectorAll('.dup-chk:checked');
-            if (!chks.length) return;
+            const chks = document.querySelectorAll('.dup-chk:checked'); if (!chks.length) return;
             for (const c of chks) await del(c.value);
-            await refresh();
-            alert('Duplicates deleted!');
-            $('#dup-modal').hidden = true;
+            await refresh(); alert('Duplicates deleted!'); $('#dup-modal').hidden = true;
         };
 
         document.onmousemove = document.onkeydown = () => {
@@ -1266,72 +1159,28 @@
         };
     };
 
-    // =========================================================================
-    // Import flow
-    // =========================================================================
-    const imp = async fs => {
-        if (!fs.length) return;
-        for (const f of fs) {
-            const o = await offer(f);
-            const n = await add(f, st.cwd, o && o.pwd ? await hashPwd(o.pwd) : null);
-            if (o && o.hint) { n.hint = o.hint; await req(sto(N, 'readwrite').put(n)); }
-            if (o && o.ro) { n.ro = true; await req(sto(N, 'readwrite').put(n)); }
-        }
-        await refresh();
-    };
-
-    // =========================================================================
-    // Performance widget
-    // =========================================================================
     const initPerfWidget = () => {
         const memBtn = $('#btn-mem'), diskBtn = $('#btn-disk'), memBox = $('#mem-chart'), diskBox = $('#disk-chart');
         if (!memBtn || !diskBtn) return;
         let active = null;
         const closeAll = () => { memBox.classList.add('hidden'); diskBox.classList.add('hidden'); active = null; };
-
-        memBtn.onclick = () => {
-            if (active === 'mem') { closeAll(); return; }
-            const openMem = () => { memBox.classList.remove('hidden'); active = 'mem'; };
-            if (active) { closeAll(); setTimeout(openMem, 250); } else openMem();
-        };
-
-        diskBtn.onclick = () => {
-            if (active === 'disk') { closeAll(); return; }
-            const openDisk = () => { diskBox.classList.remove('hidden'); active = 'disk'; };
-            if (active) { closeAll(); setTimeout(openDisk, 250); } else openDisk();
-        };
-
+        memBtn.onclick = () => { if (active === 'mem') { closeAll(); return; } const o = () => { memBox.classList.remove('hidden'); active = 'mem'; }; if (active) { closeAll(); setTimeout(o, 250); } else o(); };
+        diskBtn.onclick = () => { if (active === 'disk') { closeAll(); return; } const o = () => { diskBox.classList.remove('hidden'); active = 'disk'; }; if (active) { closeAll(); setTimeout(o, 250); } else o(); };
         const memCanvas = $('#mem-canvas'), diskCanvas = $('#disk-canvas');
         if (!memCanvas || !diskCanvas) return;
         const memCtx = memCanvas.getContext('2d'), diskCtx = diskCanvas.getContext('2d');
-        const w = 320, h = 140;
-        memCanvas.width = w; memCanvas.height = h;
-        diskCanvas.width = w; diskCanvas.height = h;
+        const w = 320, h = 140; memCanvas.width = w; memCanvas.height = h; diskCanvas.width = w; diskCanvas.height = h;
         const memData = new Array(50).fill(0), diskData = new Array(50).fill(0);
-
         const draw = (ctx, data, color) => {
             ctx.clearRect(0, 0, w, h);
             ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--chart-grid').trim();
             ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--chart-text').trim();
-            ctx.font = '10px Tahoma';
-            ctx.lineWidth = 1;
-            for (let i = 0; i <= 4; i++) {
-                const y = i * (h / 4);
-                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-                ctx.fillText((100 - (i * 25)) + '%', 5, y - 4);
-            }
-            ctx.beginPath();
-            ctx.strokeStyle = color; ctx.lineWidth = 2;
-            for (let i = 0; i < data.length; i++) {
-                const x = (i / (data.length - 1)) * w;
-                const y = h - (data[i] * h);
-                if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-            }
-            ctx.stroke();
-            ctx.lineTo(w, h); ctx.lineTo(0, h);
-            ctx.fillStyle = color + '44'; ctx.fill();
+            ctx.font = '10px Tahoma'; ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) { const y = i * (h / 4); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); ctx.fillText((100 - (i * 25)) + '%', 5, y - 4); }
+            ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2;
+            for (let i = 0; i < data.length; i++) { const x = (i / (data.length - 1)) * w, y = h - (data[i] * h); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+            ctx.stroke(); ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.fillStyle = color + '44'; ctx.fill();
         };
-
         setInterval(() => {
             if (!memBox.classList.contains('hidden')) {
                 const hasMem = !!(performance && performance.memory);
@@ -1349,39 +1198,25 @@
             }
             if (!diskBox.classList.contains('hidden') && navigator.storage && navigator.storage.estimate) {
                 navigator.storage.estimate().then(est => {
-                    const diskUsed = est.usage / est.quota;
-                    diskData.push(diskUsed); diskData.shift();
+                    const diskUsed = est.usage / est.quota; diskData.push(diskUsed); diskData.shift();
                     const peak = Math.max(...diskData), avg = diskData.reduce((a, b) => a + b, 0) / diskData.length;
                     $('#disk-current-label').textContent = Math.round(diskUsed * 100) + '%';
-                    $('#disk-used').textContent = fmtSz(est.usage);
-                    $('#disk-quota').textContent = fmtSz(est.quota);
-                    $('#disk-peak').textContent = Math.round(peak * 100) + '%';
-                    $('#disk-avg').textContent = Math.round(avg * 100) + '%';
+                    $('#disk-used').textContent = fmtSz(est.usage); $('#disk-quota').textContent = fmtSz(est.quota);
+                    $('#disk-peak').textContent = Math.round(peak * 100) + '%'; $('#disk-avg').textContent = Math.round(avg * 100) + '%';
                     draw(diskCtx, diskData, getComputedStyle(document.documentElement).getPropertyValue('--chart-line-disk').trim());
                 });
             }
         }, 1000);
     };
 
-    // =========================================================================
-    // Storage init
-    // =========================================================================
     const initStorage = async () => {
         if (db) db.close();
         db = await open();
         const dirName = st.hiddenVolume ? O + '_hidden' : O;
-        if (activeBackend === 'OPFS') {
-            opf = await navigator.storage.getDirectory();
-            await opf.getDirectoryHandle(dirName, { create: true });
-        }
-        st.cwd = R;
-        st.sel.clear();
-        st.unlocked.clear();
+        if (activeBackend === 'OPFS') { opf = await navigator.storage.getDirectory(); await opf.getDirectoryHandle(dirName, { create: true }); }
+        st.cwd = R; st.sel.clear(); st.unlocked.clear();
     };
 
-    // =========================================================================
-    // Bootstrap
-    // =========================================================================
     initTheme();
     document.title = 'RetroDisk 9.0 — ' + browserInfo.name;
     bind();
@@ -1390,22 +1225,14 @@
 
     try {
         await mountStorage();
-        if (navigator.storage && navigator.storage.persist) {
-            try { await navigator.storage.persist(); } catch (e) { }
-        }
+        if (navigator.storage && navigator.storage.persist) { try { await navigator.storage.persist(); } catch (e) { } }
         await initStorage();
         await refresh();
-
         const badge = $('#backendBadge');
         if (badge) {
             badge.textContent = 'Backend: ' + activeBackend;
-            if (activeBackend === 'OPFS') {
-                badge.style.background = '#d4edda';
-                stat('Ready on ' + browserInfo.name + ' (' + browserInfo.engine + ') · OPFS mounted.');
-            } else {
-                badge.style.background = '#fff3cd';
-                stat('Ready on ' + browserInfo.name + ' (' + browserInfo.engine + ') · IndexedDB fallback active.');
-            }
+            badge.style.background = activeBackend === 'OPFS' ? '#d4edda' : '#fff3cd';
+            stat(`Ready on ${browserInfo.name} · ${activeBackend} mounted.`);
         }
     } catch (e) {
         console.error(e);

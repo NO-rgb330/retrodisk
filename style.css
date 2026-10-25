@@ -39,6 +39,11 @@ button,input,textarea,select{font-family:Tahoma,Verdana,sans-serif}
     z-index: 50;
 }
 
+/* Uploading State */
+.row.uploading .label { color: var(--t1); font-style: italic; font-weight: bold; }
+.row.uploading .ico { animation: pulse 1s infinite alternate; }
+@keyframes pulse { 0% { opacity: 0.3; } 100% { opacity: 1; } }
+
 /* ==========================================================================
    RETRO RDPlayer CSS (FIXED)
    ========================================================================== */

@@ -1,7 +1,732 @@
+// =========================================================================
+// RDPlayer Integration (Custom Media Viewer)
+// =========================================================================
+(function () {
+    'use strict';
+
+    const P = d => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
+    const CIRC = 'M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z';
+    const IC = {
+        play: P('M8 5v14l11-7z'),
+        pause: P('M6 19h4V5H6v14zm8-14v14h4V5h-4z'),
+        replay: P(CIRC),
+        back10: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${CIRC}"/><text x="12" y="16.2" font-size="7" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif">10</text></svg>`,
+        fwd10: `<svg viewBox="0 0 24 24" aria-hidden="true"><path transform="translate(24 0) scale(-1 1)" d="${CIRC}"/><text x="12" y="16.2" font-size="7" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif">10</text></svg>`,
+        volHi: P('M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z'),
+        volLo: P('M18.5 12c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM5 9v6h4l5 5V4L9 9H5z'),
+        volOff: P('M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z'),
+        fs: P('M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z'),
+        fsOff: P('M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z'),
+        pip: P('M19 11h-8v6h8v-6zm4 8V4.98C23 3.88 22.1 3 21 3H3c-1.1 0-2 .88-2 1.98V19c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2zm-2 .02H3V4.97h18v14.05z'),
+        loop: P('M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z'),
+        prev: P('M6 6h2v12H6zm3.5 6l8.5 6V6z'),
+        next: P('M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z'),
+        chevL: P('M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z'),
+        chevR: P('M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z'),
+        close: P('M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'),
+        zoomIn: P('M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zm2.5-4h-2v2H9v-2H7V9h2V7h1v2h2v1z'),
+        zoomOut: P('M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14zM7 9h5v1H7z'),
+        fit: P('M19 12h-2v3h-3v2h5v-5zM7 9h3V7H5v5h2V9zm14-6H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.99h18v14.02z'),
+        actual: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v12h14V6H5z"/><text x="12" y="15.4" font-size="8" font-weight="700" text-anchor="middle" font-family="Arial,sans-serif">1:1</text></svg>`,
+        rotL: P('M7.11 8.53L5.7 7.11C4.8 8.27 4.24 9.61 4.07 11h2.02c.14-.87.49-1.72 1.02-2.47zM6.09 13H4.07c.17 1.39.72 2.73 1.62 3.89l1.41-1.42c-.52-.75-.87-1.59-1.01-2.47zm1.01 5.32c1.16.9 2.51 1.44 3.9 1.61V17.9c-.87-.15-1.71-.49-2.46-1.03L7.1 18.32zM13 4.07V1L8.45 5.55 13 10V6.09c2.84.48 5 2.94 5 5.91s-2.16 5.43-5 5.91v2.02c3.95-.49 7-3.85 7-7.93s-3.05-7.44-7-7.93z'),
+        rotR: `<svg viewBox="0 0 24 24" aria-hidden="true"><path transform="translate(24 0) scale(-1 1)" d="M7.11 8.53L5.7 7.11C4.8 8.27 4.24 9.61 4.07 11h2.02c.14-.87.49-1.72 1.02-2.47zM6.09 13H4.07c.17 1.39.72 2.73 1.62 3.89l1.41-1.42c-.52-.75-.87-1.59-1.01-2.47zm1.01 5.32c1.16.9 2.51 1.44 3.9 1.61V17.9c-.87-.15-1.71-.49-2.46-1.03L7.1 18.32zM13 4.07V1L8.45 5.55 13 10V6.09c2.84.48 5 2.94 5 5.91s-2.16 5.43-5 5.91v2.02c3.95-.49 7-3.85 7-7.93s-3.05-7.44-7-7.93z"/></svg>`,
+        download: P('M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z'),
+        edit: P('M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z'),
+        slide: P('M10 8v8l6-4-6-4zm9-5H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z'),
+        note: P('M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'),
+        warn: P('M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z')
+    };
+
+    const VIDEO_TYPES = {
+        mp4: ['video/mp4'], m4v: ['video/mp4', 'video/x-m4v'], mov: ['video/quicktime', 'video/mp4'], webm: ['video/webm'],
+        mkv: ['video/x-matroska', 'video/webm', 'video/mp4'], avi: ['video/x-msvideo', 'video/avi', 'video/mp4'],
+        ogv: ['video/ogg'], ogg: ['video/ogg'], '3gp': ['video/3gpp', 'video/mp4'], mpg: ['video/mpeg', 'video/mp4'],
+        mpeg: ['video/mpeg', 'video/mp4'], wmv: ['video/x-ms-wmv', 'video/mp4'], flv: ['video/x-flv', 'video/mp4'], ts: ['video/mp2t', 'video/mp4']
+    };
+    const AUDIO_TYPES = {
+        mp3: ['audio/mpeg'], wav: ['audio/wav', 'audio/x-wav'], ogg: ['audio/ogg'], oga: ['audio/ogg'], flac: ['audio/flac', 'audio/x-flac'],
+        aac: ['audio/aac', 'audio/mp4'], m4a: ['audio/mp4', 'audio/x-m4a', 'audio/aac'], opus: ['audio/ogg; codecs=opus', 'audio/opus', 'audio/webm'],
+        wma: ['audio/x-ms-wma', 'audio/mp4'], mid: ['audio/midi'], midi: ['audio/midi'], weba: ['audio/webm']
+    };
+    const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 3];
+
+    const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+    const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const fmtT = s => {
+        if (!isFinite(s) || s < 0) s = 0;
+        s = Math.floor(s);
+        const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+        return (h ? h + ':' + String(m).padStart(2, '0') : m) + ':' + String(x).padStart(2, '0');
+    };
+    const fmtSz = b => {
+        if (b == null) return '';
+        if (b < 1024) return b + ' B';
+        const u = ['KB', 'MB', 'GB', 'TB']; let n = b, i = -1;
+        do { n /= 1024; i++; } while (n >= 1024 && i < u.length - 1);
+        return (n < 10 ? n.toFixed(2) : n < 100 ? n.toFixed(1) : Math.round(n)) + ' ' + u[i];
+    };
+    const store = {
+        get(k, d) { try { const v = localStorage.getItem('rdp_' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+        set(k, v) { try { localStorage.setItem('rdp_' + k, JSON.stringify(v)); } catch (e) { } }
+    };
+
+    let root = null, S = null, ui = {};
+
+    function build() {
+        if (root) return;
+        root = document.createElement('div');
+        root.className = 'rdp'; root.hidden = true; root.tabIndex = -1;
+        root.innerHTML = `
+            <div class="rdp-stage"></div>
+            <div class="rdp-top">
+                <div class="rdp-title"><b class="rdp-name"></b><span class="rdp-sub"></span></div>
+                <div class="rdp-tools"></div>
+            </div>
+            <button class="rdp-nav rdp-prev" data-a="prev" title="Previous (P)">${IC.chevL}</button>
+            <button class="rdp-nav rdp-next" data-a="next" title="Next (N)">${IC.chevR}</button>
+            <div class="rdp-bar" hidden>
+                <div class="rdp-seek" role="slider" aria-label="Seek" tabindex="-1">
+                    <div class="rdp-track"><div class="rdp-buf"></div><div class="rdp-prog"></div></div>
+                    <div class="rdp-thumb"></div><div class="rdp-tip">0:00</div>
+                </div>
+                <div class="rdp-row">
+                    <button class="rdp-btn rdp-big" data-a="play" title="Play / Pause (Space)">${IC.play}</button>
+                    <button class="rdp-btn" data-a="back" title="Back 10 s (J)">${IC.back10}</button>
+                    <button class="rdp-btn" data-a="fwd" title="Forward 10 s (L)">${IC.fwd10}</button>
+                    <div class="rdp-vol"><button class="rdp-btn" data-a="mute" title="Mute (M)">${IC.volHi}</button><input class="rdp-volr" type="range" min="0" max="1" step="0.01" aria-label="Volume"></div>
+                    <div class="rdp-time"><span class="rdp-cur">0:00</span><span class="rdp-slash">/</span><span class="rdp-dur">0:00</span></div>
+                    <span class="rdp-sp"></span>
+                    <button class="rdp-btn rdp-pl" data-a="prev" title="Previous (P)">${IC.prev}</button>
+                    <button class="rdp-btn rdp-pl" data-a="next" title="Next (N)">${IC.next}</button>
+                    <button class="rdp-btn" data-a="loop" title="Loop (Shift+L)">${IC.loop}</button>
+                    <div class="rdp-spdwrap"><button class="rdp-btn rdp-spd" data-a="speed" title="Playback speed (&lt; &gt;)">1×</button><div class="rdp-menu" hidden></div></div>
+                    <button class="rdp-btn rdp-pipb" data-a="pip" title="Picture in picture">${IC.pip}</button>
+                    <button class="rdp-btn rdp-fsb" data-a="fs" title="Fullscreen (F)">${IC.fs}</button>
+                </div>
+            </div>
+            <div class="rdp-load"><div class="rdp-spin"></div></div>
+            <div class="rdp-err" hidden><div class="rdp-card"><div class="rdp-eico">${IC.warn}</div><h3></h3><p></p><div class="rdp-ebtns"></div></div></div>
+            <div class="rdp-toast"></div>
+            <div class="rdp-help" hidden><div class="rdp-card rdp-hcard"><h3>Keyboard shortcuts</h3><div class="rdp-hgrid"></div><p class="rdp-hfoot">Press Esc or ? to close</p></div></div>`;
+        document.body.appendChild(root);
+        const q = s => root.querySelector(s);
+        ui = {
+            stage: q('.rdp-stage'), top: q('.rdp-top'), name: q('.rdp-name'), sub: q('.rdp-sub'), tools: q('.rdp-tools'),
+            bar: q('.rdp-bar'), seek: q('.rdp-seek'), buf: q('.rdp-buf'), prog: q('.rdp-prog'), thumb: q('.rdp-thumb'), tip: q('.rdp-tip'),
+            play: q('[data-a="play"]'), mute: q('[data-a="mute"]'), vol: q('.rdp-volr'), cur: q('.rdp-cur'), dur: q('.rdp-dur'),
+            loop: q('[data-a="loop"]'), spd: q('.rdp-spd'), menu: q('.rdp-menu'), pip: q('.rdp-pipb'), fsb: q('.rdp-fsb'),
+            load: q('.rdp-load'), err: q('.rdp-err'), toast: q('.rdp-toast'), help: q('.rdp-help'), prevB: q('.rdp-prev'), nextB: q('.rdp-next')
+        };
+        ui.menu.innerHTML = SPEEDS.map(s => `<button data-a="setspd" data-v="${s}">${s === 1 ? 'Normal' : s + '×'}</button>`).join('');
+        q('.rdp-hgrid').innerHTML = [
+            ['Space / K', 'Play or pause'], ['← →', 'Seek 5 s (photos: previous / next)'], ['J / L', 'Back / forward 10 s'], ['↑ ↓', 'Volume'],
+            ['M', 'Mute'], ['0 – 9', 'Jump to 0 – 90 %'], [', .', 'Step one frame (paused)'], ['< >', 'Slower / faster'], ['Shift+L', 'Loop'],
+            ['N / P', 'Next / previous file'], ['F', 'Fullscreen'], ['+ −', 'Zoom photo'], ['0 / 1', 'Fit / actual size'], ['R / Shift+R', 'Rotate view'],
+            ['S', 'Slideshow'], ['Esc', 'Close']
+        ].map(([k, d]) => `<div><kbd>${esc(k)}</kbd><span>${esc(d)}</span></div>`).join('');
+
+        root.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
+        root.addEventListener('click', onClick);
+        root.addEventListener('pointermove', wake);
+        root.addEventListener('pointerdown', wake);
+        ui.vol.addEventListener('input', () => {
+            const m = S && S.media; if (!m) return;
+            const v = +ui.vol.value; m.volume = v; m.muted = v === 0;
+        });
+        bindSeek();
+        document.addEventListener('keydown', onKey, true);
+        document.addEventListener('fullscreenchange', onFS);
+        window.addEventListener('resize', () => { if (S && S.im) { layoutImage(false); } });
+        document.addEventListener('click', e => { if (S && !ui.menu.hidden && !e.target.closest('.rdp-spdwrap')) closeMenu(); }, true);
+    }
+
+    function toast(t) {
+        ui.toast.textContent = t; ui.toast.classList.add('show');
+        clearTimeout(toast.t); toast.t = setTimeout(() => ui.toast.classList.remove('show'), 900);
+    }
+    const setLoading = on => ui.load.classList.toggle('on', !!on);
+    const menuOpen = () => !ui.menu.hidden;
+    function closeMenu() { ui.menu.hidden = true; }
+
+    function wake() {
+        if (!S) return;
+        root.classList.remove('idle');
+        clearTimeout(S.idleT);
+        const playing = S.media && !S.media.paused && S.mode === 'video';
+        const fsImg = S.mode === 'image' && document.fullscreenElement === root;
+        if (playing || fsImg) {
+            S.idleT = setTimeout(() => {
+                if (!S || menuOpen() || root.querySelector('.rdp-bar:hover,.rdp-top:hover,.rdp-nav:hover')) return wake();
+                root.classList.add('idle');
+            }, 2600);
+        }
+    }
+
+    function onFS() {
+        if (!S) return;
+        const on = document.fullscreenElement === root;
+        ui.fsb.innerHTML = on ? IC.fsOff : IC.fs;
+        const b = ui.tools.querySelector('[data-a="fs"]'); if (b) b.innerHTML = on ? IC.fsOff : IC.fs;
+        if (S.im) setTimeout(() => layoutImage(false), 60);
+        wake();
+    }
+    function toggleFS() {
+        if (document.fullscreenElement === root) document.exitFullscreen();
+        else if (root.requestFullscreen) root.requestFullscreen().catch(() => toast('Fullscreen is not available'));
+    }
+
+    function renderTools() {
+        const it = S.list[S.idx];
+        const t = (a, icon, title, cls = '') => `<button class="rdp-btn ${cls}" data-a="${a}" title="${title}">${icon}</button>`;
+        let h = '';
+        if (it.kind === 'image') {
+            h += t('zoomout', IC.zoomOut, 'Zoom out (−)') + '<span class="rdp-zoom">100%</span>' + t('zoomin', IC.zoomIn, 'Zoom in (+)') +
+                t('fit', IC.fit, 'Fit to window (0)') + t('actual', IC.actual, 'Actual size (1)') +
+                t('rotl', IC.rotL, 'Rotate left (Shift+R)') + t('rotr', IC.rotR, 'Rotate right (R)');
+            if (S.list.length > 1) h += t('slide', IC.slide, 'Slideshow (S)', S.slideT ? 'on' : '');
+            if (it.editable && S.opts.onEdit) h += t('edit', IC.edit, 'Edit image');
+        }
+        h += t('save', IC.download, 'Save to device') + t('fs', document.fullscreenElement === root ? IC.fsOff : IC.fs, 'Fullscreen (F)') +
+            '<button class="rdp-btn rdp-q" data-a="help" title="Keyboard shortcuts (?)">?</button>' + t('close', IC.close, 'Close (Esc)');
+        ui.tools.innerHTML = h;
+    }
+
+    function open(opts) {
+        build();
+        if (S) close(true);
+        const list = opts.list || [];
+        if (!list.length) return;
+        S = {
+            opts, list, idx: 0, tok: 0, mode: null, cur: null, url: null, media: null, im: null, raf: 0, idleT: 0, slideT: 0,
+            loop: false, prevFocus: document.activeElement
+        };
+        root.hidden = false; root.classList.remove('idle');
+        ui.prevB.hidden = ui.nextB.hidden = list.length < 2;
+        root.querySelectorAll('.rdp-pl').forEach(b => { b.hidden = list.length < 2; });
+        ui.stage.innerHTML = ''; ui.err.hidden = true; ui.bar.hidden = true;
+        root.focus({ preventScroll: true });
+        show(clamp(opts.index || 0, 0, list.length - 1), true);
+    }
+
+    async function show(i, first) {
+        const s = S; if (!s) return;
+        const my = ++s.tok;
+        i = ((i % s.list.length) + s.list.length) % s.list.length;
+        const item = s.list[i];
+        setLoading(true);
+        let r = null;
+        try { r = await s.opts.load(item); } catch (e) { r = null; }
+        if (S !== s || my !== s.tok) return;
+        setLoading(false);
+        if (!r || !r.blob) { if (first) close(); else wake(); return; }
+
+        teardown();
+        s.idx = i; s.cur = { item, blob: r.blob, pwd: r.pwd };
+        s.mode = item.kind === 'image' ? 'image' : item.kind === 'audio' ? 'audio' : 'video';
+        ui.err.hidden = true;
+        ui.name.textContent = item.name;
+        ui.sub.textContent = [s.list.length > 1 ? `${i + 1} / ${s.list.length}` : '', fmtSz(item.size)].filter(Boolean).join('  ·  ');
+        root.dataset.mode = s.mode;
+        renderTools();
+        ui.bar.hidden = s.mode === 'image';
+        if (s.mode === 'image') await mountImage(my); else mountMedia(my);
+        wake();
+    }
+
+    function teardown() {
+        const s = S; if (!s) return;
+        cancelAnimationFrame(s.raf); s.raf = 0;
+        if (s.media) {
+            const m = s.media; m._dead = true;
+            try { m.pause(); } catch (e) { }
+            m.removeAttribute('src'); try { m.load(); } catch (e) { }
+            s.media = null;
+        }
+        if (s.viz) { cancelAnimationFrame(s.viz.raf); try { s.viz.src.disconnect(); } catch (e) { } s.viz = null; }
+        if (s.url) { URL.revokeObjectURL(s.url); s.url = null; }
+        s.im = null; s.scrub = null;
+        ui.stage.innerHTML = ''; ui.stage.className = 'rdp-stage';
+        closeMenu();
+    }
+
+    function close(silent) {
+        const s = S; if (!s) return;
+        S = null; s.tok++;
+        clearTimeout(s.idleT); clearInterval(s.slideT);
+        S = s; teardown(); S = null;
+        if (document.fullscreenElement === root) document.exitFullscreen().catch(() => { });
+        root.hidden = true; root.classList.remove('idle'); ui.stage.innerHTML = '';
+        setLoading(false); ui.err.hidden = true; ui.help.hidden = true;
+        try { if (s.prevFocus && s.prevFocus.focus) s.prevFocus.focus({ preventScroll: true }); } catch (e) { }
+        if (!silent && s.opts.onClose) s.opts.onClose();
+    }
+
+    const step = d => { if (S && S.list.length > 1) show(S.idx + d); };
+
+    async function mountImage(my) {
+        const s = S, item = s.cur.item;
+        ui.stage.innerHTML = '<div class="rdp-view"><img class="rdp-img" alt="" draggable="false"></div>';
+        const view = ui.stage.querySelector('.rdp-view'), img = view.querySelector('img');
+        s.url = URL.createObjectURL(s.cur.blob);
+        img.src = s.url;
+        try { await img.decode(); } catch (e) { if (S === s && my === s.tok) showError('image'); return; }
+        if (S !== s || my !== s.tok) return;
+        const w = img.naturalWidth || 300, h = img.naturalHeight || 150;
+        img.style.width = w + 'px'; img.style.height = h + 'px'; img.style.marginLeft = -w / 2 + 'px'; img.style.marginTop = -h / 2 + 'px';
+        s.im = { view, img, w, h, scale: 1, tx: 0, ty: 0, rot: 0, fit: true, svg: item.ext === 'svg', ptr: new Map() };
+        ui.sub.textContent = [s.list.length > 1 ? `${s.idx + 1} / ${s.list.length}` : '', `${w} × ${h}`, fmtSz(item.size)].filter(Boolean).join('  ·  ');
+        layoutImage(true);
+        requestAnimationFrame(() => img.classList.add('ready'));
+
+        view.addEventListener('wheel', e => {
+            e.preventDefault();
+            const im = s.im; if (!im) return;
+            let dy = e.deltaY; if (e.deltaMode === 1) dy *= 33;
+            const r = view.getBoundingClientRect();
+            zoomTo(im.scale * Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0018)), e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2, false);
+        }, { passive: false });
+        view.addEventListener('dblclick', e => {
+            const im = s.im; if (!im) return;
+            const r = view.getBoundingClientRect(), f = fitScale();
+            if (im.scale > f * 1.02) fitImage(true);
+            else zoomTo(f >= 0.98 ? 2 : 1, e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2, true);
+        });
+        view.addEventListener('pointerdown', e => {
+            const im = s.im; if (!im || e.button > 0) return;
+            view.setPointerCapture(e.pointerId);
+            im.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, type: e.pointerType });
+            im.drag = { tx: im.tx, ty: im.ty, moved: false };
+            if (im.ptr.size === 2) { const [a, b] = [...im.ptr.values()]; im.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, scale: im.scale }; }
+            view.classList.add('dragging'); im.img.classList.remove('anim');
+        });
+        view.addEventListener('pointermove', e => {
+            const im = s.im; if (!im || !im.ptr.has(e.pointerId)) return;
+            const p = im.ptr.get(e.pointerId); const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+            if (im.ptr.size === 2 && im.pinch) {
+                const [a, b] = [...im.ptr.values()], d = Math.hypot(a.x - b.x, a.y - b.y) || 1, r = view.getBoundingClientRect();
+                zoomTo(im.pinch.scale * d / im.pinch.d, (a.x + b.x) / 2 - r.left - r.width / 2, (a.y + b.y) / 2 - r.top - r.height / 2, false);
+                im.drag.moved = true; return;
+            }
+            if (Math.abs(e.clientX - p.sx) + Math.abs(e.clientY - p.sy) > 3) im.drag.moved = true;
+            if (im.scale > fitScale() * 1.001) { im.tx += dx; im.ty += dy; im.fit = false; clampPan(); applyImage(false); }
+        });
+        const up = e => {
+            const im = s.im; if (!im || !im.ptr.has(e.pointerId)) return;
+            const p = im.ptr.get(e.pointerId); im.ptr.delete(e.pointerId);
+            if (im.ptr.size < 2) im.pinch = null;
+            if (!im.ptr.size) {
+                view.classList.remove('dragging');
+                const dx = e.clientX - p.sx, dy = e.clientY - p.sy;
+                if (p.type === 'touch' && im.scale <= fitScale() * 1.02 && Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
+            }
+        };
+        view.addEventListener('pointerup', up); view.addEventListener('pointercancel', up);
+    }
+
+    const imDims = im => (im.rot % 180 !== 0 ? [im.h, im.w] : [im.w, im.h]);
+    function fitScale() {
+        const im = S.im, vw = im.view.clientWidth, vh = im.view.clientHeight, [iw, ih] = imDims(im);
+        let f = Math.min(vw / iw, vh / ih);
+        if (!im.svg) f = Math.min(f, 1);
+        return f > 0 && isFinite(f) ? f : 1;
+    }
+    function clampPan() {
+        const im = S.im, vw = im.view.clientWidth, vh = im.view.clientHeight, [iw, ih] = imDims(im);
+        const mx = Math.max(0, (iw * im.scale - vw) / 2), my = Math.max(0, (ih * im.scale - vh) / 2);
+        im.tx = clamp(im.tx, -mx, mx); im.ty = clamp(im.ty, -my, my);
+    }
+    function applyImage(animate) {
+        const im = S.im; if (!im) return;
+        im.img.classList.toggle('anim', !!animate);
+        im.img.classList.toggle('pix', im.scale >= 3);
+        im.img.style.transform = `translate(${im.tx}px,${im.ty}px) rotate(${im.rot}deg) scale(${im.scale})`;
+        im.view.classList.toggle('zoomed', im.scale > fitScale() * 1.001);
+        const z = ui.tools.querySelector('.rdp-zoom'); if (z) z.textContent = Math.round(im.scale * 100) + '%';
+    }
+    function layoutImage(reset) {
+        const im = S.im; if (!im) return;
+        if (reset || im.fit) { im.scale = fitScale(); im.tx = im.ty = 0; im.fit = true; }
+        else { im.scale = Math.max(im.scale, fitScale()); clampPan(); }
+        applyImage(false);
+    }
+    function fitImage(animate) { const im = S.im; if (!im) return; im.scale = fitScale(); im.tx = im.ty = 0; im.fit = true; applyImage(animate); }
+    function zoomTo(ns, px, py, animate) {
+        const im = S.im; if (!im) return;
+        const f = fitScale(); ns = clamp(ns, f, Math.max(32, f));
+        const k = ns / im.scale;
+        im.tx = px - (px - im.tx) * k; im.ty = py - (py - im.ty) * k; im.scale = ns;
+        if (ns <= f * 1.001) { im.tx = im.ty = 0; im.fit = true; } else im.fit = false;
+        clampPan(); applyImage(animate);
+    }
+    const zoomBy = k => { const im = S.im; if (im) zoomTo(im.scale * k, 0, 0, true); };
+    function rotate(d) { const im = S.im; if (!im) return; im.rot += d; layoutImageAfterRotate(); }
+    function layoutImageAfterRotate() {
+        const im = S.im; const f = fitScale();
+        if (im.fit || im.scale < f) { im.scale = f; im.tx = im.ty = 0; im.fit = true; } else clampPan();
+        applyImage(true);
+    }
+    function toggleSlide() {
+        if (S.slideT) { clearInterval(S.slideT); S.slideT = 0; toast('Slideshow off'); }
+        else {
+            S.slideT = setInterval(() => {
+                if (!S || S.mode !== 'image') { clearInterval(S && S.slideT); if (S) S.slideT = 0; return; }
+                const nx = S.list[(S.idx + 1) % S.list.length];
+                if (nx.kind !== 'image') { clearInterval(S.slideT); S.slideT = 0; renderTools(); toast('Slideshow stopped'); return; }
+                show(S.idx + 1);
+            }, 3500);
+            toast('Slideshow on');
+        }
+        renderTools();
+    }
+
+    function candidates(item, blob) {
+        const table = item.kind === 'audio' ? AUDIO_TYPES : VIDEO_TYPES, out = [];
+        const own = (blob.type || '').toLowerCase();
+        if (/^(video|audio)\//.test(own)) out.push(own);
+        (table[item.ext] || []).forEach(t => { if (!out.includes(t)) out.push(t); });
+        out.push('');
+        return out;
+    }
+
+    function mountMedia(my) {
+        const s = S, item = s.cur.item, isVideo = s.mode === 'video';
+        let media;
+        if (isVideo) {
+            ui.stage.innerHTML = '<div class="rdp-vwrap"><video class="rdp-video" playsinline preload="auto"></video><div class="rdp-bigplay">' + IC.play + '</div></div>';
+            media = ui.stage.querySelector('video');
+            const wrap = ui.stage.querySelector('.rdp-vwrap');
+            let clickT = 0;
+            wrap.addEventListener('click', e => {
+                if (e.detail > 1) return;
+                clearTimeout(clickT); clickT = setTimeout(togglePlay, 220);
+            });
+            wrap.addEventListener('dblclick', () => { clearTimeout(clickT); toggleFS(); });
+        } else {
+            ui.stage.innerHTML = `<div class="rdp-acard"><canvas class="rdp-viz" width="560" height="200"></canvas><div class="rdp-aname">${esc(item.name.replace(/\.[^.]+$/, ''))}</div><div class="rdp-asub">${esc((item.ext || 'audio').toUpperCase())} audio</div></div>`;
+            media = document.createElement('audio'); media.preload = 'auto';
+        }
+        s.media = media; s.loaded = false; s.started = false; s.lastSec = -1;
+        media.volume = clamp(store.get('vol', 1), 0, 1); media.muted = !!store.get('muted', false);
+        media.loop = s.loop; media.playbackRate = 1;
+        ui.pip.hidden = !isVideo || !document.pictureInPictureEnabled;
+        ui.loop.classList.toggle('on', s.loop);
+        ui.spd.textContent = '1×';
+        syncVol(); syncPlay(); updateProgress(true);
+        ui.dur.textContent = '0:00'; ui.cur.textContent = '0:00';
+        setBuffering(true);
+
+        const ok = () => S === s && my === s.tok && s.media === media;
+        const cands = candidates(item, s.cur.blob); let ci = 0;
+        const tryNext = () => {
+            if (!ok()) return;
+            if (ci >= cands.length) { showError(s.mode); return; }
+            if (s.url) URL.revokeObjectURL(s.url);
+            const type = cands[ci++];
+            s.url = URL.createObjectURL(s.cur.blob.slice(0, s.cur.blob.size, type));
+            media.src = s.url;
+            try { media.load(); } catch (e) { }
+        };
+        media.addEventListener('error', () => {
+            if (!ok()) return;
+            if (!s.loaded) tryNext();
+            else { setBuffering(false); toast('Playback error'); }
+        });
+        media.addEventListener('loadedmetadata', () => {
+            if (!ok()) return;
+            s.loaded = true; setBuffering(false);
+            ui.dur.textContent = fmtT(media.duration);
+            if (isVideo) {
+                if (!media.videoWidth) ui.stage.classList.add('audioonly');
+                const d = `${media.videoWidth || 0} × ${media.videoHeight || 0}`;
+                ui.sub.textContent = [s.list.length > 1 ? `${s.idx + 1} / ${s.list.length}` : '', media.videoWidth ? d : 'audio only', fmtT(media.duration), fmtSz(item.size)].filter(Boolean).join('  ·  ');
+            } else {
+                ui.sub.textContent = [s.list.length > 1 ? `${s.idx + 1} / ${s.list.length}` : '', fmtT(media.duration), fmtSz(item.size)].filter(Boolean).join('  ·  ');
+            }
+        });
+        media.addEventListener('canplay', () => {
+            if (!ok()) return;
+            setBuffering(false);
+            if (!s.started) { s.started = true; const p = media.play(); if (p && p.catch) p.catch(() => { syncPlay(); }); }
+        });
+        media.addEventListener('durationchange', () => { if (ok()) ui.dur.textContent = fmtT(media.duration); });
+        media.addEventListener('waiting', () => { if (ok() && s.loaded) setBuffering(true); });
+        media.addEventListener('playing', () => { if (ok()) setBuffering(false); });
+        media.addEventListener('seeked', () => { if (ok()) { setBuffering(false); updateProgress(true); } });
+        media.addEventListener('play', () => { if (!ok()) return; syncPlay(); startTick(); startViz(); wake(); });
+        media.addEventListener('pause', () => { if (!ok()) return; syncPlay(); updateProgress(true); wake(); });
+        media.addEventListener('timeupdate', () => { if (ok() && media.paused) updateProgress(true); });
+        media.addEventListener('progress', () => { if (ok()) updateBuffered(); });
+        media.addEventListener('ended', () => {
+            if (!ok()) return;
+            syncPlay(); updateProgress(true);
+            if (s.mode === 'audio' && !media.loop && s.list.length > 1) show(s.idx + 1);
+        });
+        media.addEventListener('volumechange', () => {
+            if (!ok()) return;
+            syncVol(); store.set('vol', media.volume); store.set('muted', media.muted);
+        });
+        media.addEventListener('ratechange', () => { if (ok()) ui.spd.textContent = media.playbackRate + '×'; });
+        tryNext();
+    }
+
+    function setBuffering(on) { root.classList.toggle('buffering', !!on); }
+    function syncPlay() {
+        const m = S && S.media; if (!m) return;
+        const paused = S.scrub ? !S.scrub.was : m.paused;
+        ui.play.innerHTML = m.ended ? IC.replay : (paused ? IC.play : IC.pause);
+        root.classList.toggle('paused', paused);
+    }
+    function syncVol() {
+        const m = S && S.media; if (!m) return;
+        const v = m.muted ? 0 : m.volume;
+        ui.vol.value = v; ui.vol.style.setProperty('--p', (v * 100) + '%');
+        ui.mute.innerHTML = v === 0 ? IC.volOff : v < 0.5 ? IC.volLo : IC.volHi;
+    }
+    function updateBuffered() {
+        const m = S && S.media; if (!m || !m.duration || !isFinite(m.duration)) { ui.buf.style.transform = 'scaleX(0)'; return; }
+        let end = 0;
+        for (let i = 0; i < m.buffered.length; i++) if (m.buffered.start(i) <= m.currentTime + 0.5) end = Math.max(end, m.buffered.end(i));
+        ui.buf.style.transform = `scaleX(${clamp(end / m.duration, 0, 1)})`;
+    }
+    function updateProgress(force) {
+        const m = S && S.media; if (!m) { ui.prog.style.transform = 'scaleX(0)'; ui.thumb.style.left = '0%'; return; }
+        const d = m.duration, c = S.scrub && S.scrub.t != null ? S.scrub.t : m.currentTime;
+        const p = d && isFinite(d) ? clamp(c / d, 0, 1) : 0;
+        ui.prog.style.transform = `scaleX(${p})`; ui.thumb.style.left = (p * 100) + '%';
+        const sec = Math.floor(c);
+        if (force || sec !== S.lastSec) { S.lastSec = sec; ui.cur.textContent = fmtT(c); }
+        updateBuffered();
+    }
+    function startTick() {
+        const s = S; if (!s || s.raf) return;
+        const loop = () => {
+            if (S !== s || !s.media || s.media.paused) { s.raf = 0; return; }
+            updateProgress(false); s.raf = requestAnimationFrame(loop);
+        };
+        s.raf = requestAnimationFrame(loop);
+    }
+    function togglePlay() {
+        const m = S && S.media; if (!m) return;
+        if (m.ended) { m.currentTime = 0; }
+        if (m.paused) { const p = m.play(); if (p && p.catch) p.catch(() => { }); } else m.pause();
+    }
+    function seekBy(d) {
+        const m = S && S.media; if (!m || !isFinite(m.duration)) return;
+        m.currentTime = clamp(m.currentTime + d, 0, m.duration);
+        toast((d > 0 ? '+' : '−') + Math.abs(d) + ' s'); updateProgress(true);
+    }
+    function setVolume(v) {
+        const m = S && S.media; if (!m) return;
+        v = clamp(v, 0, 1); m.volume = v; m.muted = v === 0; toast('Volume ' + Math.round(v * 100) + '%');
+    }
+    function setSpeed(r) {
+        const m = S && S.media; if (!m) return;
+        m.playbackRate = r; toast(r + '×');
+    }
+    function stepSpeed(d) {
+        const m = S && S.media; if (!m) return;
+        let i = SPEEDS.findIndex(x => x >= m.playbackRate - 1e-6); if (i < 0) i = SPEEDS.length - 1;
+        setSpeed(SPEEDS[clamp(i + d, 0, SPEEDS.length - 1)]);
+    }
+    function toggleLoop() {
+        const m = S && S.media; if (!S) return;
+        S.loop = !S.loop; if (m) m.loop = S.loop; ui.loop.classList.toggle('on', S.loop); toast(S.loop ? 'Loop on' : 'Loop off');
+    }
+    function togglePip() {
+        const m = S && S.media; if (!m || S.mode !== 'video') return;
+        if (document.pictureInPictureElement) document.exitPictureInPicture().catch(() => { });
+        else if (m.requestPictureInPicture) m.requestPictureInPicture().catch(() => toast('Picture-in-picture is not available'));
+    }
+
+    function bindSeek() {
+        const seek = ui.seek, frac = e => { const r = seek.getBoundingClientRect(); return clamp((e.clientX - r.left) / r.width, 0, 1); };
+        const flush = () => {
+            const sc = S && S.scrub; if (!sc) return;
+            sc.f = 0;
+            if (S.media && sc.t != null) { try { S.media.currentTime = sc.t; } catch (e) { } }
+        };
+        seek.addEventListener('pointerdown', e => {
+            const m = S && S.media; if (!m || !isFinite(m.duration) || e.button > 0) return;
+            e.preventDefault(); seek.setPointerCapture(e.pointerId);
+            S.scrub = { was: !m.paused, t: frac(e) * m.duration, f: 0 };
+            if (S.scrub.was) m.pause();
+            seek.classList.add('active'); updateProgress(true);
+            S.scrub.f = requestAnimationFrame(flush);
+        });
+        seek.addEventListener('pointermove', e => {
+            const m = S && S.media, r = seek.getBoundingClientRect();
+            if (m && isFinite(m.duration)) {
+                const f = frac(e);
+                ui.tip.textContent = fmtT(f * m.duration); ui.tip.style.left = clamp(e.clientX - r.left, 24, r.width - 24) + 'px';
+                if (S.scrub) { S.scrub.t = f * m.duration; updateProgress(true); if (!S.scrub.f) S.scrub.f = requestAnimationFrame(flush); }
+            }
+        });
+        const end = e => {
+            const sc = S && S.scrub; if (!sc) return;
+            cancelAnimationFrame(sc.f);
+            if (S.media && sc.t != null) { try { S.media.currentTime = sc.t; } catch (x) { } }
+            const was = sc.was; S.scrub = null; seek.classList.remove('active'); updateProgress(true);
+            if (was && S.media) { const p = S.media.play(); if (p && p.catch) p.catch(() => { }); }
+        };
+        seek.addEventListener('pointerup', end); seek.addEventListener('pointercancel', end);
+    }
+
+    function startViz() {
+        const s = S; if (!s || s.mode !== 'audio' || !s.media || s.viz) return;
+        const cv = ui.stage.querySelector('.rdp-viz'); if (!cv) return;
+        const ctx = cv.getContext('2d');
+        let an = null;
+        try {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (AC) {
+                if (!startViz.ac) startViz.ac = new AC();
+                if (startViz.ac.state === 'suspended') startViz.ac.resume().catch(() => { });
+                if (startViz.ac.state === 'running') {
+                    const src = startViz.ac.createMediaElementSource(s.media);
+                    an = startViz.ac.createAnalyser(); an.fftSize = 128; an.smoothingTimeConstant = 0.8;
+                    src.connect(an); an.connect(startViz.ac.destination);
+                    s.viz = { src, raf: 0 };
+                }
+            }
+        } catch (e) { an = null; }
+        if (!s.viz) s.viz = { src: { disconnect() { } }, raf: 0 };
+        const bars = 40, data = an ? new Uint8Array(an.frequencyBinCount) : null, vals = new Array(bars).fill(0);
+        const draw = () => {
+            if (S !== s || !s.viz) return;
+            const w = cv.width, h = cv.height; ctx.clearRect(0, 0, w, h);
+            if (an) an.getByteFrequencyData(data);
+            const bw = w / bars;
+            for (let i = 0; i < bars; i++) {
+                const target = an && !s.media.paused ? (data[Math.floor(i * data.length * 0.7 / bars)] / 255) : (s.media.paused ? 0 : 0.15 + 0.1 * Math.sin(Date.now() / 200 + i));
+                vals[i] += (target - vals[i]) * 0.35;
+                const bh = Math.max(3, vals[i] * h * 0.95);
+                ctx.fillStyle = `hsl(${210 + i * 2}, 85%, ${55 + vals[i] * 15}%)`;
+                const x = i * bw + bw * 0.15, y = (h - bh) / 2, ww = bw * 0.7, r = Math.min(ww / 2, bh / 2);
+                ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + ww, y, x + ww, y + bh, r); ctx.arcTo(x + ww, y + bh, x, y + bh, r);
+                ctx.arcTo(x, y + bh, x, y, r); ctx.arcTo(x, y, x + ww, y, r); ctx.fill();
+            }
+            s.viz.raf = requestAnimationFrame(draw);
+        };
+        draw();
+    }
+
+    function showError(kind) {
+        const s = S; if (!s) return;
+        const it = s.cur.item, ext = (it.ext || '').toUpperCase() || 'this';
+        setLoading(false); setBuffering(false);
+        ui.stage.innerHTML = ''; ui.bar.hidden = true;
+        const h = ui.err.querySelector('h3'), p = ui.err.querySelector('p'), b = ui.err.querySelector('.rdp-ebtns');
+        if (kind === 'image') {
+            h.textContent = "This picture can't be displayed";
+            p.textContent = `Your browser couldn't decode this ${ext} image. Formats such as HEIC, TIFF or RAW are only supported by some browsers (Safari opens HEIC and TIFF). You can still save the file.`;
+        } else {
+            h.textContent = "This file can't be played here";
+            p.textContent = `Your browser couldn't decode this ${ext} ${kind}. The container or codec (for example HEVC/H.265, AC-3, DTS, or an old AVI/WMV/FLV codec) isn't supported. Chrome and Edge play H.264, VP8/VP9 and AV1; Safari plays HEVC. Save the file and open it in a desktop player such as VLC.`;
+        }
+        b.innerHTML = '<button class="rdp-pill" data-a="save">Save to device</button>' + (s.list.length > 1 ? '<button class="rdp-pill ghost" data-a="next">Next file</button>' : '') + '<button class="rdp-pill ghost" data-a="close">Close</button>';
+        ui.err.hidden = false;
+    }
+
+    function toggleHelp(force) { ui.help.hidden = force == null ? !ui.help.hidden : !force; }
+
+    function onClick(e) {
+        const b = e.target.closest('[data-a]'); if (!b || !S) return;
+        const a = b.dataset.a; e.stopPropagation(); wake();
+        switch (a) {
+            case 'close': close(); break;
+            case 'prev': step(-1); break;
+            case 'next': step(1); break;
+            case 'play': togglePlay(); break;
+            case 'back': seekBy(-10); break;
+            case 'fwd': seekBy(10); break;
+            case 'mute': { const m = S.media; if (m) { m.muted = !m.muted; if (!m.muted && m.volume === 0) m.volume = 0.5; } break; }
+            case 'loop': toggleLoop(); break;
+            case 'speed': ui.menu.hidden = !ui.menu.hidden; break;
+            case 'setspd': setSpeed(+b.dataset.v); closeMenu(); break;
+            case 'pip': togglePip(); break;
+            case 'fs': toggleFS(); break;
+            case 'zoomin': zoomBy(1.25); break;
+            case 'zoomout': zoomBy(0.8); break;
+            case 'fit': fitImage(true); break;
+            case 'actual': if (S.im) zoomTo(1, 0, 0, true); break;
+            case 'rotl': rotate(-90); break;
+            case 'rotr': rotate(90); break;
+            case 'slide': toggleSlide(); break;
+            case 'save': if (S.cur && S.opts.onSave) S.opts.onSave(S.cur.item, S.cur.blob); break;
+            case 'edit': {
+                const c = S.cur, o = S.opts; close(true);
+                if (o.onEdit) o.onEdit(c.item, c.blob, c.pwd);
+                break;
+            }
+            case 'help': toggleHelp(); break;
+        }
+    }
+
+    function onKey(e) {
+        if (!S) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (document.querySelector('.ask-overlay,.toast-panel,#dlg:not([hidden])')) return;
+        const t = e.target;
+        if (t && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && t.type !== 'range'))) return;
+        const k = e.key, kind = S.list[S.idx].kind, m = S.media;
+        const use = fn => { e.preventDefault(); e.stopPropagation(); fn && fn(); wake(); };
+
+        if (k === 'Escape') return use(() => { if (!ui.help.hidden) toggleHelp(false); else if (menuOpen()) closeMenu(); else close(); });
+        if (k === '?') return use(() => toggleHelp());
+        if (!ui.help.hidden) return use();
+        if (k === 'f' || k === 'F') return use(toggleFS);
+        if (k === 'PageUp') return use(() => step(-1));
+        if (k === 'PageDown') return use(() => step(1));
+        if (k === 'n' || k === 'N') return use(() => step(1));
+        if (k === 'p' || k === 'P') return use(() => step(-1));
+
+        if (kind === 'image') {
+            switch (k) {
+                case 'ArrowLeft': return use(() => step(-1));
+                case 'ArrowRight': return use(() => step(1));
+                case '+': case '=': return use(() => zoomBy(1.25));
+                case '-': case '_': return use(() => zoomBy(0.8));
+                case '0': return use(() => fitImage(true));
+                case '1': return use(() => { if (S.im) zoomTo(1, 0, 0, true); });
+                case 'r': return use(() => rotate(90));
+                case 'R': return use(() => rotate(-90));
+                case 's': case 'S': return use(() => { if (S.list.length > 1) toggleSlide(); });
+                case 'Home': return use(() => show(0));
+                case 'End': return use(() => show(S.list.length - 1));
+            }
+            return;
+        }
+        if (!m) return;
+        switch (k) {
+            case ' ': case 'k': case 'K': return use(togglePlay);
+            case 'ArrowLeft': return use(() => seekBy(-5));
+            case 'ArrowRight': return use(() => seekBy(5));
+            case 'j': case 'J': return use(() => seekBy(-10));
+            case 'l': return use(() => seekBy(10));
+            case 'L': return use(toggleLoop);
+            case 'ArrowUp': return use(() => setVolume((m.muted ? 0 : m.volume) + 0.05));
+            case 'ArrowDown': return use(() => setVolume((m.muted ? 0 : m.volume) - 0.05));
+            case 'm': case 'M': return use(() => { m.muted = !m.muted; toast(m.muted ? 'Muted' : 'Volume ' + Math.round(m.volume * 100) + '%'); });
+            case '<': return use(() => stepSpeed(-1));
+            case '>': return use(() => stepSpeed(1));
+            case ',': if (!m.paused) return; return use(() => { m.currentTime = Math.max(0, m.currentTime - 1 / 30); });
+            case '.': if (!m.paused) return; return use(() => { m.currentTime = Math.min(m.duration || 0, m.currentTime + 1 / 30); });
+            case 'Home': return use(() => { m.currentTime = 0; });
+            case 'End': return use(() => { if (isFinite(m.duration)) m.currentTime = m.duration; });
+        }
+        if (/^[0-9]$/.test(k) && isFinite(m.duration)) return use(() => { m.currentTime = m.duration * (+k / 10); updateProgress(true); toast(k + '0%'); });
+    }
+
+    window.RDPlayer = { open, close: () => close(), isOpen: () => !!S };
+})();
+
+
+// =========================================================================
+// RetroDisk App
+// =========================================================================
 (async function () {
     'use strict';
 
-    // Names kept from earlier versions so existing data stays readable.
     const DB = 'rd8', V = 1, N = 'n', R = 'r', O = 'opf8', C = 5 * 1024 * 1024, TRASH = 'trash';
     const KDF_ITER = 600000, MAX_HASH = 1024 ** 3, MAX_TEXT = 1024 * 1024;
     const EDITABLE_IMG = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'];
@@ -55,7 +780,6 @@
     });
 
     // ---------- crypto helpers ----------
-    // Files made by older versions used SHA-256(password) as the key material; v2 files use the password itself.
     const legacyKey = async p => bytesToHex(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(p))));
 
     const hashBlob = async b => {
@@ -69,7 +793,6 @@
         { name: 'AES-GCM', length: 256 }, false, [usage]
     );
 
-    // Main-thread fallback if the worker can't load (e.g. opened from file://).
     let lk = { id: null, key: null };
     const localChunk = async ({ chunk, compress, password, saltHex, ivHex }) => {
         let buf = chunk;
@@ -81,11 +804,10 @@
         }
         return buf;
     };
-    let wPending = null;   // the one chunk currently being processed by the worker
+    let wPending = null;
     const useWorker = () => {
         try {
             wkr = new Worker('worker.js');
-            // Attach immediately: a worker that fails to load reports its error right away.
             wkr.onerror = e => {
                 if (e && e.preventDefault) e.preventDefault();
                 wkr = null;
@@ -162,7 +884,6 @@
         return c;
     };
 
-    // true if `id` is `anc` or lives somewhere below it
     const isInside = async (id, anc) => {
         let cur = id;
         for (let g = 0; cur && cur !== R && cur !== TRASH && g < 500; g++) {
@@ -172,7 +893,6 @@
         return cur === anc;
     };
 
-    // ids of everything that sits in the trash (directly or inside a trashed folder)
     const trashedIds = all => {
         const map = new Map(all.map(x => [x.id, x])), out = new Set();
         for (const x of all) {
@@ -210,7 +930,7 @@
         }
     };
     const readBlob = async id => {
-        if (activeBackend === 'OPFS') { try { return await (await getFhOPFS(id, false)).getFile(); } catch (e) { /* fall through */ } }
+        if (activeBackend === 'OPFS') { try { return await (await getFhOPFS(id, false)).getFile(); } catch (e) { } }
         try { const rec = await req(sto('blobs').get(id)); return rec ? rec.data : null; } catch (e) { return null; }
     };
     const deleteBlob = async id => {
@@ -278,7 +998,6 @@
         });
     };
 
-    // pwd is the RAW password (or null). o: { exclude, hint, ro, tag, created }
     const add = async (f, pid, pwd, o = {}) => {
         const name = await uniq(clean(f.name || 'untitled') || 'untitled', pid, o.exclude);
         const th = pwd ? null : await thumb(f);
@@ -296,7 +1015,6 @@
         return nd;
     };
 
-    // Throws on a wrong password (AES-GCM auth failure); returns null if the data is missing.
     const getBlob = async (nd, pwd) => {
         const raw = await readBlob(nd.id);
         if (!raw) return null;
@@ -316,7 +1034,6 @@
         return new Blob(ch, { type: nd.mime });
     };
 
-    // Prompts for a password when needed (retrying on a wrong one). Returns { blob, pwd } or null.
     const openNode = async nd => {
         if (!nd.encrypted) {
             try { const b = await getBlob(nd); if (b) return { blob: b, pwd: null }; stat('File data is missing.'); }
@@ -360,7 +1077,6 @@
         await put(n);
     };
 
-    // Best-effort only: browser storage and SSDs can't guarantee physical overwrite.
     const randBlob = len => {
         const parts = [];
         for (let o = 0; o < len; o += 1048576) {
@@ -455,8 +1171,6 @@
         $('#stSel').textContent = any ? n.length + ' selected' : 'None selected';
     };
 
-    // Update highlight on existing rows instead of rebuilding the list (a rebuild between the two
-    // clicks of a double-click makes the browser drop the dblclick event).
     const selChanged = () => {
         document.querySelectorAll('#listbody .row').forEach(r => r.classList.toggle('sel', st.sel.has(r.dataset.id)));
         side();
@@ -478,7 +1192,7 @@
             const n = await node(cur); if (!n) break;
             chain.unshift(n); cur = n.parentId;
         }
-        if (seq !== refreshSeq) return;   // a newer refresh has started
+        if (seq !== refreshSeq) return;
         st.items = items; st.path = chain;
 
         const ids = new Set(items.map(i => i.id));
@@ -516,7 +1230,6 @@
     };
     const confirmDlg = (title, label, okText) => dlg({ title, label, input: false, okText }).then(Boolean);
 
-    // Returns the entered password, or null if cancelled.
     const ask = (nd, err) => new Promise(res => {
         const b = document.createElement('div'); b.className = 'modal-back ask-overlay'; b.style.zIndex = '300';
         b.innerHTML = `
@@ -540,7 +1253,6 @@
         b.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); b.querySelector('#pwo').click(); } });
     });
 
-    // Asks once per upload batch. Returns null (skip) or { pwd, hint, ro }.
     const offer = label => new Promise(res => {
         const p = document.createElement('div'); p.className = 'toast-panel';
         p.innerHTML = `
@@ -655,7 +1367,6 @@
 
     const selNodes = () => st.items.filter(i => st.sel.has(i.id));
 
-    // Returns an async fn(parts[]) -> id of the (created-on-demand) nested folder under `dest`.
     const dirResolver = dest => {
         const cache = new Map();
         return async parts => {
@@ -674,7 +1385,6 @@
         };
     };
 
-    // items: [{ dirs: ['a','b'], file: File | null }]  (file === null means an empty folder)
     const importItems = async (items, failedPre = 0) => {
         if (!items.length) return stat('Nothing to upload.');
         if (busy) return stat('Another operation is still running.');
@@ -700,7 +1410,6 @@
         } finally { busy = false; }
     };
 
-    // Recursively read a dropped FileSystemEntry (must be obtained synchronously inside the drop event).
     const readAllEntries = dir => new Promise((res, rej) => {
         const r = dir.createReader(), all = [];
         const next = () => r.readEntries(b => { if (!b.length) res(all); else { all.push(...b); next(); } }, rej);
@@ -717,6 +1426,30 @@
             if (!kids.length) out.push({ dirs: d, file: null });
             for (const k of kids) await walkEntry(k, d, out);
         }
+    };
+
+    const playMedia = (n) => {
+        const mediaItems = st.items.filter(i => i.kind === 'file' && ['image', 'video', 'audio'].includes(cat(i).cat));
+        const list = mediaItems.map(i => ({
+            id: i.id, name: i.name, kind: cat(i).cat, mime: i.mime, size: i.size, ext: extOf(i.name), editable: EDITABLE_IMG.includes(extOf(i.name))
+        }));
+        const index = list.findIndex(i => i.id === n.id);
+        RDPlayer.open({
+            list,
+            index: index >= 0 ? index : 0,
+            load: async (item) => {
+                const realNode = st.items.find(i => i.id === item.id);
+                const r = await openNode(realNode);
+                if (!r) return null;
+                return { blob: r.blob, pwd: r.pwd };
+            },
+            onSave: (item, blob) => saveBlob(blob, item.name),
+            onEdit: (item, blob, pwd) => {
+                const realNode = st.items.find(i => i.id === item.id);
+                openImgEditor(realNode, blob, pwd);
+            },
+            onClose: () => { }
+        });
     };
 
     const act = {
@@ -855,7 +1588,6 @@
         await refresh();
     };
 
-    // Writes a new version of a file, then removes the old one (so a failure never loses data).
     const replaceNode = async (n, file, pwd) => {
         const nd = await add(file, n.parentId, pwd, { exclude: n.id, hint: n.hint, ro: n.ro, tag: n.tag, created: n.created });
         await del(n.id);
@@ -907,10 +1639,18 @@
 
     const prev = async (n, o = {}) => {
         if (n.kind !== 'file') return;
+        const c = cat(n).cat;
+        
+        // Route to RDPlayer for media types
+        if (['image', 'video', 'audio'].includes(c)) {
+            playMedia(n);
+            return;
+        }
+
         if (pvNode) closePreview();
         const r = await openNode(n);
         if (!r) return;
-        const b = r.blob, pwd = r.pwd, c = cat(n).cat, u = URL.createObjectURL(b);
+        const b = r.blob, pwd = r.pwd, u = URL.createObjectURL(b);
         purls.push(u); pvNode = n;
 
         $('#modalTitle').textContent = n.name;
@@ -919,19 +1659,7 @@
         $('#modalDownloadBtn').onclick = () => saveBlob(b, n.name);
         $('#modal').hidden = false;
 
-        if (c === 'image') {
-            $('#modalBody').innerHTML = `<img src="${u}">`;
-            if (EDITABLE_IMG.includes(extOf(n.name))) {
-                $('#modalSaveAsBtn').hidden = false; $('#modalSaveAsBtn').textContent = 'Edit Image';
-                $('#modalSaveAsBtn').onclick = () => openImgEditor(n, b, pwd);
-            }
-        } else if (c === 'video') {
-            $('#modalBody').innerHTML = `<video controls autoplay src="${u}"></video>`;
-        } else if (c === 'audio') {
-            $('#modalBody').innerHTML = `<audio controls autoplay src="${u}"></audio>`;
-            const q = st.items.filter(i => cat(i).cat === 'audio'), idx = q.findIndex(i => i.id === n.id);
-            $('#modalBody audio').onended = () => { if (idx >= 0 && idx < q.length - 1) prev(q[idx + 1]); };
-        } else if (c === 'pdf') {
+        if (c === 'pdf') {
             $('#modalBody').innerHTML = `<iframe src="${u}"></iframe>`;
         } else if (c === 'text') {
             const big = b.size > MAX_TEXT;
@@ -940,7 +1668,7 @@
             const crlf = text.includes('\r\n');
             const enterEdit = () => {
                 $('#modalBody').innerHTML = '<textarea class="editor" spellcheck="false"></textarea>';
-                $('#modalBody textarea').value = text;   // set via .value: innerHTML would drop a leading newline
+                $('#modalBody textarea').value = text;
                 sb.textContent = 'Save';
                 sb.onclick = async () => {
                     sb.disabled = true;
@@ -956,11 +1684,10 @@
             if (!big && (ext === 'md' || ext === 'markdown')) {
                 $('#modalBody').innerHTML = '<div class="markdown-view"></div>';
                 const v = $('#modalBody .markdown-view');
-                // Markdown can contain raw HTML, so it must be sanitised (or shown as plain text).
                 if (typeof marked !== 'undefined' && typeof DOMPurify !== 'undefined') {
                     v.innerHTML = DOMPurify.sanitize(marked.parse(text));
                     v.querySelectorAll('a').forEach(a => { a.target = '_blank'; a.rel = 'noopener noreferrer'; });
-                    v.querySelectorAll('img').forEach(im => {           // no remote requests from stored documents
+                    v.querySelectorAll('img').forEach(im => {
                         if (!/^(data|blob):/i.test(im.getAttribute('src') || '')) im.replaceWith(document.createTextNode('[image: ' + (im.alt || 'blocked') + ']'));
                     });
                 } else v.textContent = text;
@@ -1014,7 +1741,7 @@
     };
     const parseSDP = () => { try { return JSON.parse($('#webrtcInput').value.trim()); } catch (e) { rtcStatus('That is not a valid offer/answer.'); return null; } };
 
-    // ---------- steganography (LSB of R,G,B; alpha untouched) ----------
+    // ---------- steganography ----------
     const lsbIdx = k => ((k / 3) | 0) * 4 + (k % 3);
     const loadPixels = async file => {
         const img = new Image(), u = URL.createObjectURL(file);
@@ -1023,7 +1750,7 @@
         const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
         return { c, ctx, id: ctx.getImageData(0, 0, c.width, c.height) };
     };
-    const STEG_MAGIC = [0x52, 0x44, 0x53, 0x31]; // "RDS1"
+    const STEG_MAGIC = [0x52, 0x44, 0x53, 0x31];
 
     // ---------- event wiring ----------
     const anyModal = () => !!document.querySelector('.modal-back:not([hidden])') || !!document.querySelector('.toast-panel');
@@ -1158,6 +1885,53 @@
         };
         $('#crumbs').onclick = e => { const cr = e.target.closest('.cr'); if (cr) nav(cr.dataset.id); };
 
+        // --- MARQUEE SELECTION ---
+        let isMarquee = false, mqStart = { x: 0, y: 0 }, mqBox = null;
+
+        $('#listbody').addEventListener('mousedown', e => {
+            if (e.target.closest('.row') || e.button !== 0) return;
+            isMarquee = true;
+            const rect = $('#listbody').getBoundingClientRect();
+            mqStart = { x: e.clientX - rect.left + $('#listbody').scrollLeft, y: e.clientY - rect.top + $('#listbody').scrollTop };
+            mqBox = document.createElement('div'); mqBox.className = 'marquee-box';
+            Object.assign(mqBox.style, { left: mqStart.x + 'px', top: mqStart.y + 'px', width: '0', height: '0' });
+            $('#listbody').appendChild(mqBox);
+            if (!e.ctrlKey && !e.metaKey) { st.sel.clear(); selChanged(); }
+        });
+
+        window.addEventListener('mousemove', e => {
+            if (!isMarquee || !mqBox) return;
+            const rect = $('#listbody').getBoundingClientRect();
+            const curX = e.clientX - rect.left + $('#listbody').scrollLeft;
+            const curY = e.clientY - rect.top + $('#listbody').scrollTop;
+            const left = Math.min(mqStart.x, curX), top = Math.min(mqStart.y, curY);
+            const width = Math.abs(curX - mqStart.x), height = Math.abs(curY - mqStart.y);
+            Object.assign(mqBox.style, { left: left + 'px', top: top + 'px', width: width + 'px', height: height + 'px' });
+            
+            const boxRect = { left, top, right: left + width, bottom: top + height };
+            let changed = false;
+            $('#listbody').querySelectorAll('.row').forEach(r => {
+                const rRect = r.getBoundingClientRect();
+                const rRel = {
+                    left: rRect.left - rect.left + $('#listbody').scrollLeft,
+                    top: rRect.top - rect.top + $('#listbody').scrollTop,
+                    right: rRect.right - rect.left + $('#listbody').scrollLeft,
+                    bottom: rRect.bottom - rect.top + $('#listbody').scrollTop
+                };
+                const isInside = !(boxRect.right < rRel.left || boxRect.left > rRel.right || boxRect.bottom < rRel.top || boxRect.top > rRel.bottom);
+                const has = st.sel.has(r.dataset.id);
+                if (isInside && !has) { st.sel.add(r.dataset.id); changed = true; }
+                else if (!isInside && has && !e.ctrlKey && !e.metaKey) { st.sel.delete(r.dataset.id); changed = true; }
+            });
+            if (changed) selChanged();
+        });
+
+        window.addEventListener('mouseup', e => {
+            if (!isMarquee) return;
+            isMarquee = false;
+            if (mqBox) { mqBox.remove(); mqBox = null; }
+        });
+
         // internal drag & drop (move)
         $('#listbody').ondragstart = e => {
             const r = e.target.closest('.row');
@@ -1207,7 +1981,6 @@
         $('#listbody').addEventListener('drop', e => {
             if (dragIds) return;
             e.preventDefault(); $('#listbody').classList.remove('drag');
-            // everything that touches the DataTransfer must happen synchronously, before the first await
             const dt = e.dataTransfer, files = Array.from(dt.files);
             const entries = dt.items && dt.items.length && dt.items[0].webkitGetAsEntry
                 ? Array.from(dt.items).filter(i => i.kind === 'file').map(i => i.webkitGetAsEntry()).filter(Boolean) : [];

@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>RetroDisk 9.5</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+    
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-theme="default">
+    <div id="app">
+        <div class="titlebar">
+            <div class="title"><span class="logo"></span>RetroDisk 9.5</div>
+            <button class="fs-btn" id="btnFullscreen">⛶ Fullscreen</button>
+        </div>
+        
+        <div class="menubar" id="menubar">
+            <div class="menu">
+                <span class="menu-title">File</span>
+                <div class="dropdown">
+                    <div class="mi" data-act="upload">Upload Files…</div>
+                    <div class="mi" data-act="uploadfolder">Upload Folder…</div>
+                    <div class="mi" data-act="newfolder">New Folder</div>
+                    <div class="mi sep"></div>
+                    <div class="mi" data-act="extractzip">Extract ZIP…</div>
+                    <div class="mi" data-act="download">Save to Device</div>
+                    <div class="mi" data-act="downloadzip">Save as ZIP…</div>
+                    <div class="mi" data-act="rename">Rename</div>
+                    <div class="mi" data-act="batchrename">Batch Rename…</div>
+                    <div class="mi" data-act="restore">Restore from Trash</div>
+                    <div class="mi" data-act="delete">Move to Trash</div>
+                    <div class="mi sep"></div>
+                    <div class="mi" data-act="shred" style="color:#b03a2a;">Secure Shred…</div>
+                </div>
+            </div>
+            <div class="menu">
+                <span class="menu-title">View</span>
+                <div class="dropdown">
+                    <div class="mi" data-act="toggle_view">Toggle Grid/List</div>
+                    <div class="mi" data-act="clear_wallpaper">Clear Wallpaper</div>
+                    <div class="mi sep"></div>
+                    <div class="mi" data-act="theme_default">Theme: Default</div>
+                    <div class="mi" data-act="theme_win98">Theme: Windows 98</div>
+                    <div class="mi" data-act="theme_mac">Theme: Classic Mac</div>
+                    <div class="mi" data-act="theme_dark">Theme: Dark Mode</div>
+                </div>
+            </div>
+            <div class="menu">
+                <span class="menu-title">Tools</span>
+                <div class="dropdown">
+                    <div class="mi" data-act="find_duplicates">Find Duplicates…</div>
+                    <div class="mi" data-act="steganography">Steganography…</div>
+                    <div class="mi sep"></div>
+                    <div class="mi" data-act="webrtc">WebRTC Share…</div>
+                </div>
+            </div>
+            <div class="menu">
+                <span class="menu-title">About</span>
+                <div class="dropdown">
+                    <div class="mi" data-act="about">About RetroDisk…</div>
+                    <div class="mi" data-act="features">Features…</div>
+                    <div class="mi" data-act="tutorial">Quick Start Tutorial…</div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="toolbar">
+            <button class="btn" data-act="up" id="btnUp">Up</button>
+            <button class="btn" data-act="trash" id="btnTrash" style="color:#b03a2a; font-weight:bold;">Trash</button>
+            <div class="tsep"></div>
+            <button class="btn" data-act="upload">Upload</button>
+            <button class="btn" data-act="uploadfolder">Upload Folder</button>
+            <button class="btn" data-act="newfolder">New Folder</button>
+            <div class="tsep"></div>
+            <button class="btn" data-act="download" id="tbDownload" disabled>Save</button>
+            <button class="btn" data-act="downloadzip" id="tbDownloadZip" disabled>Save ZIP</button>
+            <button class="btn" data-act="delete" id="tbDelete" disabled>Delete</button>
+            <div class="tsep"></div>
+            <button class="btn" data-act="toggle_view" id="btnView">Grid</button>
+            <input type="text" class="searchbox" id="searchInput" placeholder="Search...">
+            <span id="backendBadge" style="margin-left:12px;padding:2px 8px;border-radius:3px;background:#e0e0e0;color:#1b1b1b;font-size:10px;font-weight:bold;" title="Active storage backend">Backend: ...</span>
+        </div>
+        
+        <div class="addressbar">
+            <span style="color:var(--tx-m);">Address</span>
+            <div class="crumbs" id="crumbs"></div>
+            <button class="btn" id="btnEmptyTrash" style="display:none; padding:2px 8px; font-size:10px;">Empty Trash</button>
+        </div>
+        
+        <div class="body">
+            <div class="pane">
+                <div class="listheader" id="listheader">
+                    <div class="col" data-sort="name">Name <span class="sort-arrow">▲</span></div>
+                    <div class="col" data-sort="type">Type <span class="sort-arrow"></span></div>
+                    <div class="col" data-sort="size">Size <span class="sort-arrow"></span></div>
+                    <div class="col" data-sort="modified">Modified <span class="sort-arrow"></span></div>
+                </div>
+                <div class="listbody list" id="listbody"></div>
+            </div>
+            
+            <aside class="sidebar">
+                <div class="panel">
+                    <h3>Quick Access</h3>
+                    <div id="quick-list" style="max-height:150px;overflow-y:auto;"></div>
+                </div>
+                <div class="panel">
+                    <h3>Disk</h3>
+                    <div class="meter"><i id="meterFill"></i></div>
+                    <div class="kv"><span>Virtual Used</span><b id="sbUsed">—</b></div>
+                    <div class="kv"><span>Total Quota</span><b id="sbQuota">—</b></div>
+                    <div class="kv"><span>Objects</span><b id="sbCount">—</b></div>
+                </div>
+                <div class="panel">
+                    <h3>Selection</h3>
+                    <div class="selinfo" id="sbSel">Nothing selected.</div>
+                </div>
+                <div class="panel">
+                    <h3>Actions</h3>
+                    <button class="btn wide" id="sbPreview" disabled>Preview</button>
+                    <button class="btn wide" id="sbDownload" disabled>Save</button>
+                    <button class="btn wide" id="sbDownloadZip" disabled>Save ZIP</button>
+                    <button class="btn wide" id="sbDelete" disabled>Delete</button>
+                </div>
+            </aside>
+        </div>
+        
+        <div class="statusbar">
+            <div class="cell" id="stItems">0 objects</div>
+            <div class="cell" id="stSel">None selected</div>
+            <div class="cell grow" id="stMsg">Ready</div>
+        </div>
+    </div>
+
+    <input type="file" id="fileInput" multiple hidden>
+    <input type="file" id="folderInput" webkitdirectory multiple hidden>
+    <input type="file" id="zipInput" accept=".zip" hidden>
+
+    <div id="ctx-menu">
+        <div class="mi" data-ctx="open">Open</div>
+        <div class="mi" data-ctx="edit">Edit</div>
+        <div class="mi" data-ctx="download">Save to Device</div>
+        <div class="mi" data-ctx="properties">Properties</div>
+        <div class="mi sep"></div>
+        <div class="mi" data-ctx="copy">Copy</div>
+        <div class="mi" data-ctx="cut">Cut</div>
+        <div class="mi" data-ctx="paste" style="display:none;" id="ctx-paste">Paste</div>
+        <div class="mi sep"></div>
+        <div class="mi" data-ctx="quickaccess">Pin to Quick Access</div>
+        <div class="mi" data-ctx="tag">Tag Color</div>
+        <div class="mi" data-ctx="wallpaper">Set as Wallpaper</div>
+        <div class="mi" data-ctx="img_edit">Edit Image</div>
+        <div class="mi sep"></div>
+        <div class="mi" data-ctx="rename">Rename</div>
+        <div class="mi" data-ctx="batchrename">Batch Rename</div>
+        <div class="mi" data-ctx="restore">Restore</div>
+        <div class="mi sep"></div>
+        <div class="mi" data-ctx="delete" style="color:#b03a2a;">Delete</div>
+    </div>
+
+    <div class="modal-back" id="modal" hidden>
+        <div class="modalwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span><span id="modalTitle">Preview</span></div><div class="winbtns"><button class="close" id="modalClose">✕</button></div></div>
+            <div class="modalbody" id="modalBody"></div>
+            <div class="modalfoot">
+                <div class="info" id="modalInfo"></div>
+                <button class="btn" id="modalSaveAsBtn" hidden>Save As</button>
+                <button class="btn" id="modalSaveBtn" hidden>Save Changes</button>
+                <button class="btn" id="modalDownloadBtn">Download</button>
+                <button class="btn" id="modalOk">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="about-modal" hidden>
+        <div class="modalwin aboutwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span>About RetroDisk</div><div class="winbtns"><button class="close" id="aboutClose">✕</button></div></div>
+            <div class="about-tabs" id="aboutTabs">
+                <button class="btn about-tab active" data-tab="about">About</button>
+                <button class="btn about-tab" data-tab="features">Features</button>
+                <button class="btn about-tab" data-tab="tutorial">Tutorial</button>
+                <button class="btn about-tab" data-tab="tips">Tips &amp; Limits</button>
+            </div>
+            <div class="modalbody about-body" id="aboutBody">
+
+                <section class="about-pane active" data-pane="about">
+                    <h2>RetroDisk 9.5</h2>
+                    <p>RetroDisk is a <b>private file manager that lives entirely in your web browser</b>, styled like a classic desktop. You can store, organise, preview, edit, encrypt and share files without an account, a server or an internet connection (once the page has loaded).</p>
+                    <h3>How it works</h3>
+                    <p>Files are saved in your browser's own storage on this device &mdash; the Origin Private File System where available, or IndexedDB as a fallback. Nothing is uploaded anywhere. Large files are cut into 5&nbsp;MB chunks; text-like files are compressed, and any file can be encrypted with a password before it is written to disk.</p>
+                    <h3>Good to know</h3>
+                    <ul>
+                        <li>Your files belong to <b>this browser on this device</b>. They don't sync, and clearing the site's data erases them.</li>
+                        <li>Forgotten passwords <b>cannot be recovered</b>. There is no reset.</li>
+                        <li>Use <b>Save ZIP</b> regularly if you want a backup.</li>
+                    </ul>
+                </section>
+
+                <section class="about-pane" data-pane="features">
+                    <h3>File management</h3>
+                    <ul>
+                        <li>Folders, breadcrumb navigation, Up button, list and grid views, sortable columns, live search</li>
+                        <li>Upload files, upload whole folders (structure kept), or drag and drop files and folders in</li>
+                        <li>Copy, cut and paste (including folders), drag items onto folders or breadcrumbs to move them</li>
+                        <li>Rename, batch rename (numbered), colour tags, Quick Access pins</li>
+                        <li>Trash with restore, empty trash, and permanent delete</li>
+                    </ul>
+                    <h3>Import &amp; export</h3>
+                    <ul>
+                        <li>Extract ZIP archives into any folder</li>
+                        <li>Save files to your device, or save files and folders as a ZIP</li>
+                        <li>SHA-256 integrity check on every download</li>
+                    </ul>
+                    <h3>Privacy &amp; security</h3>
+                    <ul>
+                        <li>Optional per-file password using <b>AES-256-GCM</b> encryption with a PBKDF2-derived key, plus an optional password hint</li>
+                        <li><b>Read-once</b> files that delete themselves after being opened or saved</li>
+                        <li><b>Secure Shred</b> overwrites a file's data before removing it (best effort)</li>
+                        <li><b>Steganography</b>: hide text inside a PNG image and extract it again</li>
+                        <li>Everything stays on your device &mdash; no accounts, no tracking, no cloud</li>
+                    </ul>
+                    <h3>Preview &amp; editing</h3>
+                    <ul>
+                        <li>Built-in viewer for images, video, audio (auto-plays the next track), PDF, source code with syntax highlighting, and Markdown</li>
+                        <li>Edit text files in place; rotate images and save them back</li>
+                        <li>Set any image as the window wallpaper</li>
+                    </ul>
+                    <h3>Tools</h3>
+                    <ul>
+                        <li><b>Find Duplicates</b> &mdash; finds identical files and moves the extras to Trash</li>
+                        <li><b>WebRTC Share</b> &mdash; send files directly to another browser with no server, by exchanging two copy-and-paste codes</li>
+                        <li>Live <b>Memory</b> and <b>Disk</b> usage graphs (bottom right)</li>
+                    </ul>
+                    <h3>Look &amp; feel</h3>
+                    <ul>
+                        <li>Four themes: Default, Windows 98, Classic Mac and Dark Mode (your choice is remembered)</li>
+                        <li>Fullscreen mode</li>
+                    </ul>
+                </section>
+
+                <section class="about-pane" data-pane="tutorial">
+                    <h3>1. Add files</h3>
+                    <p>Click <b>Upload</b> and pick files, click <b>Upload Folder</b> to bring in a whole folder, or simply <b>drag and drop</b> files or folders into the window. A small box appears asking whether to protect the upload with a password &mdash; choose <b>Skip</b> to store it normally.</p>
+                    <h3>2. Organise</h3>
+                    <ul>
+                        <li><b>New Folder</b> creates a folder; <b>double-click</b> to open it.</li>
+                        <li>Use the <b>address bar</b> breadcrumbs or the <b>Up</b> button to go back.</li>
+                        <li><b>Right-click</b> an item for rename, copy, cut, tag colour, pin to Quick Access and more.</li>
+                        <li><b>Drag</b> items onto a folder (or a breadcrumb) to move them. Hold <b>Ctrl</b> while clicking to select several.</li>
+                    </ul>
+                    <h3>3. Protect a file</h3>
+                    <p>In the upload box, type a <b>password</b>, optionally add a <b>hint</b>, and press <b>Apply</b>. Protected files show a small red lock and ask for the password whenever you open, save or copy them. Tick <b>Self-destruct (Read Once)</b> to delete the file after its first use.</p>
+                    <h3>4. Open and edit</h3>
+                    <p><b>Double-click</b> a file to preview it. For text files press <b>Edit</b>, then <b>Save</b>. For images press <b>Edit Image</b> to rotate, then <b>Save &amp; Overwrite</b>.</p>
+                    <h3>5. Get files back out</h3>
+                    <p>Select items and press <b>Save</b> to download files, or <b>Save ZIP</b> to download files and folders together. Selecting a folder and pressing Save also gives you a ZIP.</p>
+                    <h3>6. Delete and recover</h3>
+                    <p><b>Delete</b> moves items to the <b>Trash</b> (press the red <b>Trash</b> button to look inside). There you can use <b>File &#9656; Restore from Trash</b>, delete items permanently, or <b>Empty Trash</b>. <b>File &#9656; Secure Shred</b> skips the Trash and wipes the data immediately.</p>
+                    <h3>7. Share with another computer (WebRTC)</h3>
+                    <ol>
+                        <li>Both people open <b>Tools &#9656; WebRTC Share</b>.</li>
+                        <li><b>Host:</b> press <b>1. Create Offer</b> and send the code that appears to the receiver (chat, email, anything).</li>
+                        <li><b>Receiver:</b> paste it into the top box, press <b>2. Accept Offer</b>, and send the new code back.</li>
+                        <li><b>Host:</b> paste that into the top box and press <b>3. Apply Answer</b>. The status line says &ldquo;Peer connected&rdquo;.</li>
+                        <li>Host closes the window, selects files, reopens it and presses <b>Send Selected Files</b>. They land in the receiver's current folder.</li>
+                    </ol>
+                    <h3>8. Make it yours</h3>
+                    <p>Use the <b>View</b> menu to switch themes or toggle grid/list. Right-click an image and choose <b>Set as Wallpaper</b>. Use <b>Pin to Quick Access</b> for shortcuts you use often.</p>
+                </section>
+
+                <section class="about-pane" data-pane="tips">
+                    <h3>Keyboard shortcuts</h3>
+                    <table class="prop-table">
+                        <tr><td>Ctrl + C / X / V</td><td>Copy, cut, paste</td></tr>
+                        <tr><td>Ctrl + A</td><td>Select all</td></tr>
+                        <tr><td>Delete</td><td>Move to Trash (or delete permanently inside Trash)</td></tr>
+                        <tr><td>F2</td><td>Rename</td></tr>
+                        <tr><td>Esc</td><td>Close the current window or menu</td></tr>
+                        <tr><td>Enter</td><td>Confirm a dialog</td></tr>
+                    </table>
+                    <h3>Limits &amp; things to remember</h3>
+                    <ul>
+                        <li><b>Encryption and integrity checks need a secure page</b> &mdash; https:// or localhost. On a plain http:// address they are unavailable and the app will tell you.</li>
+                        <li>Browsers cap how much a site may store. The <b>Disk</b> panel shows your quota.</li>
+                        <li>Very large files are read into memory while being hashed or, on the IndexedDB fallback, stored, so extremely large files may be slow.</li>
+                        <li>Secure Shred is best effort: browsers and SSDs can't guarantee that old data is physically erased.</li>
+                        <li>Steganography needs an opaque PNG (no transparency). Longer text needs a bigger image.</li>
+                        <li>Private/incognito windows usually erase everything when closed.</li>
+                    </ul>
+                </section>
+
+            </div>
+            <div class="modalfoot"><div class="info">RetroDisk 9.5 &mdash; your files, your browser, your device.</div><button class="btn" id="aboutOk">Close</button></div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="dlg" hidden>
+        <div class="modalwin dlgwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span><span id="dlgTitle">RetroDisk</span></div><div class="winbtns"><button class="close" id="dlgX">✕</button></div></div>
+            <div class="dlgbody">
+                <label id="dlgLabel"></label>
+                <div id="dlgInputContainer"><input type="text" id="dlgInput" spellcheck="false"></div>
+                <div class="hint" id="dlgHint" hidden></div>
+            </div>
+            <div class="dlgfoot"><button class="btn" id="dlgOk">OK</button><button class="btn" id="dlgCancel">Cancel</button></div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="prop-modal" hidden>
+        <div class="modalwin dlgwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span>Properties</div><div class="winbtns"><button class="close" id="propClose">✕</button></div></div>
+            <div class="dlgbody"><table class="prop-table" id="prop-table"></table></div>
+            <div class="dlgfoot"><button class="btn" id="propOk">Close</button></div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="webrtc-modal" hidden>
+        <div class="modalwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span>WebRTC Local Share</div><div class="winbtns"><button class="close" id="webrtcClose">✕</button></div></div>
+            <div class="dlgbody">
+                <p>Send the selected files to another browser. Both sides exchange one code by hand (copy/paste).</p>
+                <label>Paste the code from the other side:</label>
+                <textarea class="webrtc-box" id="webrtcInput"></textarea>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+                    <button class="btn" id="webrtcGenerate">1. Create Offer (Host)</button>
+                    <button class="btn" id="webrtcAccept">2. Accept Offer (Receiver)</button>
+                    <button class="btn" id="webrtcApply">3. Apply Answer (Host)</button>
+                </div>
+                <label>Your code (copy to the other side):</label>
+                <textarea class="webrtc-box" id="webrtcOutput" readonly></textarea>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <button class="btn" id="webrtcSend">Send Selected Files</button>
+                    <span id="webrtcStatus" style="color:var(--tx-m);"></span>
+                </div>
+            </div>
+            <div class="dlgfoot"><button class="btn" id="webrtcOk">Close</button></div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="img-editor-modal" hidden>
+        <div class="modalwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span>Image Editor</div><div class="winbtns"><button class="close" id="imgClose">✕</button></div></div>
+            <div class="modalbody" style="background:#333;overflow:hidden;display:flex;align-items:center;justify-content:center;">
+                <canvas id="imgCanvas" style="max-width:100%;max-height:60vh;"></canvas>
+            </div>
+            <div class="modalfoot">
+                <button class="btn" id="imgRotate">Rotate 90°</button>
+                <button class="btn" id="imgSave" style="margin-left:auto;">Save & Overwrite</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="steg-modal" hidden>
+        <div class="modalwin dlgwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span>Steganography</div><div class="winbtns"><button class="close" id="stegClose">✕</button></div></div>
+            <div class="dlgbody">
+                <label>Select a PNG Image:</label>
+                <input type="file" id="stegImg" accept="image/png" style="margin-bottom:15px;">
+                <label>Secret Text:</label>
+                <textarea id="stegText" style="height:60px;"></textarea>
+                <div style="display:flex;gap:10px;margin-top:10px;">
+                    <button class="btn" id="stegHide">Hide Text in Image</button>
+                    <button class="btn" id="stegExtract">Extract Text</button>
+                </div>
+            </div>
+            <div class="dlgfoot"><button class="btn" id="stegOk">Close</button></div>
+        </div>
+    </div>
+
+    <div class="modal-back" id="dup-modal" hidden>
+        <div class="modalwin">
+            <div class="titlebar"><div class="title"><span class="logo"></span>Duplicate Finder</div><div class="winbtns"><button class="close" id="dupClose">✕</button></div></div>
+            <div class="modalbody" style="display:block;padding:20px;background:var(--win);">
+                <div id="dup-list">Scanning...</div>
+            </div>
+            <div class="modalfoot">
+                <button class="btn" id="dupClean" style="color:#b03a2a;">Move Selected to Trash</button>
+                <button class="btn" id="dupOk" style="margin-left:auto;">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="perf-widget">
+        <div id="perf-btns"><button id="btn-mem">Memory</button><button id="btn-disk">Disk</button></div>
+        <div id="mem-chart" class="chart-box hidden">
+            <div class="chart-header"><span>Memory Usage</span><span id="mem-current-label">0%</span></div>
+            <div class="chart-body"><canvas id="mem-canvas"></canvas></div>
+            <div class="chart-stats">
+                <div class="chart-stat-item"><span>Used</span><b id="mem-used">—</b></div>
+                <div class="chart-stat-item"><span>Limit</span><b id="mem-limit">—</b></div>
+                <div class="chart-stat-item"><span>Peak</span><b id="mem-peak">—</b></div>
+                <div class="chart-stat-item"><span>Avg</span><b id="mem-avg">—</b></div>
+            </div>
+        </div>
+        <div id="disk-chart" class="chart-box hidden">
+            <div class="chart-header"><span>Disk Usage</span><span id="disk-current-label">0%</span></div>
+            <div class="chart-body"><canvas id="disk-canvas"></canvas></div>
+            <div class="chart-stats">
+                <div class="chart-stat-item"><span>Used</span><b id="disk-used">—</b></div>
+                <div class="chart-stat-item"><span>Quota</span><b id="disk-quota">—</b></div>
+                <div class="chart-stat-item"><span>Peak</span><b id="disk-peak">—</b></div>
+                <div class="chart-stat-item"><span>Avg</span><b id="disk-avg">—</b></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

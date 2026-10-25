@@ -359,8 +359,9 @@
         <div class="modalwin dlgwin">
             <div class="titlebar"><div class="title"><span class="logo"></span>Steganography</div><div class="winbtns"><button class="close" id="stegClose">✕</button></div></div>
             <div class="dlgbody">
-                <label>Select a PNG Image:</label>
-                <input type="file" id="stegImg" accept="image/png" style="margin-bottom:15px;">
+                <!-- Changed to accept all image formats -->
+                <label>Select an Image:</label>
+                <input type="file" id="stegImg" accept="image/*" style="margin-bottom:15px;">
                 <label>Secret Text:</label>
                 <textarea id="stegText" style="height:60px;"></textarea>
                 <div style="display:flex;gap:10px;margin-top:10px;">

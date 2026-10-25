@@ -1231,7 +1231,7 @@
     const confirmDlg = (title, label, okText) => dlg({ title, label, input: false, okText }).then(Boolean);
 
     const ask = (nd, err) => new Promise(res => {
-        const b = document.createElement('div'); b.className = 'modal-back ask-overlay'; b.style.zIndex = '300';
+        const b = document.createElement('div'); b.className = 'modal-back ask-overlay'; b.style.zIndex = '6000'; // FIXED Z-INDEX
         b.innerHTML = `
             <div class="modalwin dlgwin">
                 <div class="titlebar"><div class="title"><span class="logo"></span>Password Required</div><div class="winbtns"><button class="close" id="pwc">✕</button></div></div>

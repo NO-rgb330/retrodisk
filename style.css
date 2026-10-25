@@ -29,3 +29,130 @@ button,input,textarea,select{font-family:Tahoma,Verdana,sans-serif}
 .about-pane p{margin:6px 0}
 .about-pane ul,.about-pane ol{margin:6px 0;padding-left:22px}
 .about-pane li{margin:3px 0}
+
+/* Drag Select Box */
+.marquee-box {
+    position: absolute;
+    border: 1px solid var(--row-s);
+    background: rgba(49, 106, 197, 0.2);
+    pointer-events: none;
+    z-index: 50;
+}
+
+/* ==========================================================================
+   RDPlayer CSS
+   ========================================================================== */
+.rdp {
+    position: fixed; inset: 0; z-index: 5000;
+    background: rgba(15, 18, 22, 0.95);
+    display: flex; flex-direction: column;
+    color: #e8ecef; font-family: Tahoma, Verdana, sans-serif;
+    opacity: 0; pointer-events: none; transition: opacity 0.15s;
+}
+.rdp:not([hidden]) { opacity: 1; pointer-events: auto; }
+.rdp-stage {
+    flex: 1; position: relative; display: flex; align-items: center; justify-content: center;
+    overflow: hidden; padding: 20px;
+}
+.rdp-view { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.rdp-img { max-width: 100%; max-height: 100%; object-fit: contain; opacity: 0; transition: opacity 0.2s; }
+.rdp-img.ready { opacity: 1; }
+.rdp-video { max-width: 100%; max-height: 100%; outline: none; }
+.rdp-top {
+    position: absolute; top: 0; left: 0; right: 0; padding: 15px 20px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+    display: flex; align-items: flex-start; justify-content: space-between; z-index: 10;
+    transition: opacity 0.3s;
+}
+.rdp-title { display: flex; flex-direction: column; gap: 4px; max-width: 80%; }
+.rdp-name { font-size: 14px; color: #fff; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+.rdp-sub { font-size: 11px; color: #aaa; }
+.rdp-tools { display: flex; gap: 6px; align-items: center; }
+.rdp-btn {
+    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 4px;
+    color: #fff; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+    cursor: pointer; transition: background 0.1s;
+}
+.rdp-btn:hover { background: rgba(255,255,255,0.2); }
+.rdp-btn svg { width: 18px; height: 18px; fill: currentColor; }
+.rdp-btn.on { background: rgba(100, 200, 100, 0.3); border-color: rgba(100, 200, 100, 0.5); }
+.rdp-bar {
+    position: absolute; bottom: 0; left: 0; right: 0; padding: 10px 20px 20px;
+    background: linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.7) 50%, transparent 100%);
+    z-index: 10; display: flex; flex-direction: column; gap: 8px; transition: opacity 0.3s;
+}
+.rdp-row { display: flex; align-items: center; gap: 12px; }
+.rdp-seek { height: 12px; width: 100%; display: flex; align-items: center; cursor: pointer; position: relative; }
+.rdp-track { flex: 1; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; position: relative; overflow: hidden; }
+.rdp-buf, .rdp-prog { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; transform-origin: left; }
+.rdp-buf { background: rgba(255,255,255,0.3); transform: scaleX(0); }
+.rdp-prog { background: #4a9bd6; transform: scaleX(0); }
+.rdp-thumb {
+    position: absolute; width: 12px; height: 12px; background: #fff; border-radius: 50%;
+    top: 50%; margin-top: -6px; margin-left: -6px; pointer-events: none;
+}
+.rdp-time { font-size: 12px; display: flex; gap: 4px; white-space: nowrap; color: #ccc; }
+.rdp-zoom { font-size: 12px; width: 40px; text-align: center; color: #ccc; }
+.rdp-sp { flex: 1; }
+.rdp-vol { display: flex; align-items: center; gap: 6px; }
+.rdp-volr { width: 60px; accent-color: #4a9bd6; cursor: pointer; }
+.rdp-err {
+    position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.8); padding: 20px;
+}
+.rdp-card { background: #222; border: 1px solid #444; border-radius: 8px; padding: 24px; max-width: 480px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+.rdp-card h3 { margin: 0 0 10px; color: #fff; }
+.rdp-card p { margin: 0 0 20px; color: #aaa; font-size: 13px; line-height: 1.5; }
+.rdp-ebtns { display: flex; gap: 10px; justify-content: center; }
+.rdp-pill { background: #4a9bd6; color: #fff; border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-size: 13px; }
+.rdp-pill.ghost { background: transparent; border: 1px solid #555; }
+.rdp-load {
+    position: absolute; inset: 0; z-index: 15; display: flex; align-items: center; justify-content: center;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+.rdp-load.on { opacity: 1; pointer-events: auto; }
+.rdp-spin { width: 40px; height: 40px; border: 3px solid rgba(255,255,255,0.2); border-top-color: #fff; border-radius: 50%; animation: rdp-spin 1s linear infinite; }
+@keyframes rdp-spin { to { transform: rotate(360deg); } }
+.rdp-nav {
+    position: absolute; top: 50%; transform: translateY(-50%);
+    background: rgba(0,0,0,0.5); border: none; color: #fff; width: 40px; height: 60px; cursor: pointer; z-index: 10;
+    display: flex; align-items: center; justify-content: center; opacity: 0.5; transition: opacity 0.2s;
+}
+.rdp-nav:hover { opacity: 1; background: rgba(0,0,0,0.8); }
+.rdp-prev { left: 0; border-radius: 0 4px 4px 0; }
+.rdp-next { right: 0; border-radius: 4px 0 0 4px; }
+.rdp-toast {
+    position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.7); color: #fff; padding: 6px 12px; border-radius: 16px; font-size: 12px;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s; z-index: 25;
+}
+.rdp-toast.show { opacity: 1; }
+.rdp-help {
+    position: absolute; inset: 0; z-index: 30; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center;
+}
+.rdp-hcard { max-width: 500px; text-align: left; }
+.rdp-hgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 12px; color: #aaa; margin-bottom: 16px; }
+.rdp-hgrid kbd { background: #333; border: 1px solid #555; padding: 2px 6px; border-radius: 4px; font-family: monospace; color: #fff; }
+.rdp-hfoot { text-align: center; font-size: 11px; color: #666; }
+.rdp.idle .rdp-top, .rdp.idle .rdp-bar, .rdp.idle .rdp-nav { opacity: 0; pointer-events: none; }
+.rdp-stage.audioonly video { display: none; }
+.rdp-bigplay {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.8); opacity: 0.8;
+    pointer-events: none; transition: opacity 0.2s, transform 0.2s; width: 80px; height: 80px;
+    background: rgba(0,0,0,0.5); border-radius: 50%; display: flex; align-items: center; justify-content: center;
+}
+.rdp-paused .rdp-bigplay { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.rdp-bigplay svg { width: 40px; height: 40px; fill: #fff; margin-left: 6px; }
+.rdp-buffering .rdp-spin { display: block; }
+.rdp-acard { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; max-width: 500px; }
+.rdp-viz { width: 100%; height: 200px; background: #1a1a1a; border-radius: 8px; }
+.rdp-aname { font-size: 20px; color: #fff; font-weight: bold; text-align: center; }
+.rdp-asub { font-size: 13px; color: #aaa; }
+.rdp-spdwrap { position: relative; }
+.rdp-spd { width: 40px !important; font-weight: bold; font-size: 11px !important; }
+.rdp-menu {
+    position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 8px;
+    background: #222; border: 1px solid #444; border-radius: 4px; padding: 4px; display: flex; flex-direction: column; gap: 2px;
+}
+.rdp-menu button { background: none; border: none; color: #ccc; padding: 6px 16px; text-align: left; cursor: pointer; font-size: 12px; border-radius: 2px; }
+.rdp-menu button:hover { background: #444; color: #fff; }

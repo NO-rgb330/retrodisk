@@ -229,7 +229,7 @@
         root.dataset.mode = s.mode;
         renderTools();
         ui.bar.hidden = s.mode === 'image';
-        if (s.mode === 'image') await mountImage(my); else mountMedia(my);
+        if (s.mode === 'image') mountImage(my); else mountMedia(my);
         wake();
     }
 
@@ -946,30 +946,62 @@
         }
     };
 
-    const proc = async (file, pwd) => {
+    const updateStatsUI = async () => {
+        try {
+            if (navigator.storage && navigator.storage.estimate) {
+                EST = await navigator.storage.estimate();
+                const q = EST.quota || 0, p = q ? Math.min(100, (EST.usage / q) * 100) : 0;
+                $('#meterFill').style.width = p + '%';
+                $('#meterFill').style.background = p > 85 ? '#e79a8c' : p > 60 ? '#f0d27a' : '#96d873';
+                $('#sbUsed').textContent = fmtSz(EST.usage);
+                $('#sbQuota').textContent = q ? fmtSz(q) : 'Unknown';
+            }
+        } catch (e) {}
+    };
+
+    const proc = async (file, pwd, nd) => {
         if (pwd && !subtleOK()) throw new Error('Encryption needs HTTPS or localhost.');
         const tot = Math.ceil(file.size / C);
         const comp = typeof CompressionStream !== 'undefined' && file.size < 100 * 1024 * 1024 && (file.type.startsWith('text/') || file.type === 'application/json');
         const salt = crypto.getRandomValues(new Uint8Array(16)), sHex = bytesToHex(salt);
-        const cs = [], ivs = [], id = uid(), chunks = [];
+        nd.salt = Array.from(salt);
+        nd.compressed = comp;
+
         let writ = null;
-        try {
-            if (activeBackend === 'OPFS') writ = await (await getFhOPFS(id, true)).createWritable();
-            for (let i = 0; i < tot; i++) {
-                const c = await file.slice(i * C, Math.min((i + 1) * C, file.size)).arrayBuffer();
-                const iv = crypto.getRandomValues(new Uint8Array(12));
-                ivs.push(Array.from(iv));
-                const buf = await runChunk({ chunk: c, compress: comp, password: pwd || null, saltHex: sHex, ivHex: bytesToHex(iv) });
-                cs.push(buf.byteLength);
-                if (writ) await writ.write(new Uint8Array(buf)); else chunks.push(new Uint8Array(buf));
+        let chunks = [];
+        
+        if (activeBackend === 'OPFS') writ = await (await getFhOPFS(nd.id, true)).createWritable();
+        
+        for (let i = 0; i < tot; i++) {
+            const c = await file.slice(i * C, Math.min((i + 1) * C, file.size)).arrayBuffer();
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const buf = await runChunk({ chunk: c, compress: comp, password: pwd || null, saltHex: sHex, ivHex: bytesToHex(iv) });
+            
+            nd.ivs.push(Array.from(iv));
+            nd.chunkSizes.push(buf.byteLength);
+            nd.compSize += buf.byteLength;
+
+            if (writ) await writ.write(new Uint8Array(buf)); 
+            else chunks.push(new Uint8Array(buf));
+
+            await req(sto(N, 'readwrite').put(nd));
+            
+            updateStatsUI();
+            
+            if (nd.parentId === st.cwd) {
+                const item = st.items.find(x => x.id === nd.id);
+                if (item) Object.assign(item, nd);
+                const label = document.querySelector(`.row[data-id="${nd.id}"] .label`);
+                if (label) {
+                    const pct = Math.round(((i + 1) / tot) * 100);
+                    label.innerHTML = `${esc(nd.name)} <span style="color:var(--t1);font-size:9px;">(${pct}%)</span>`;
+                }
             }
-            if (writ) { await writ.close(); writ = null; } else await writeBlob(id, new Blob(chunks));
-        } catch (e) {
-            if (writ) { try { await writ.abort(); } catch (x) { } }
-            try { await deleteBlob(id); } catch (x) { }
-            throw e;
+            await sleep(0);
         }
-        return { id, salt: Array.from(salt), ivs, cs, comp, enc: !!pwd };
+        
+        if (writ) await writ.close();
+        else await writeBlob(nd.id, new Blob(chunks));
     };
 
     const thumb = f => {
@@ -1004,38 +1036,59 @@
     const add = async (f, pid, pwd, o = {}) => {
         const name = await uniq(clean(f.name || 'untitled') || 'untitled', pid, o.exclude);
         const th = pwd ? null : await thumb(f);
-        const m = await proc(f, pwd);
+        const id = uid();
+        
         const nd = {
-            id: m.id, parentId: pid, name, kind: 'file', mime: f.type || 'application/octet-stream',
-            size: f.size, compSize: m.cs.reduce((a, b) => a + b, 0), compressed: m.comp,
-            encrypted: m.enc, encVer: 2, salt: m.salt, ivs: m.ivs, chunkSizes: m.cs,
-            thumb: th, hash: await hashBlob(f), created: o.created || Date.now(), modified: f.lastModified || Date.now()
+            id, parentId: pid, name, kind: 'file', mime: f.type || 'application/octet-stream',
+            size: f.size, compSize: 0, compressed: false,
+            encrypted: !!pwd, encVer: 2, salt: null, ivs: [], chunkSizes: [],
+            thumb: th, hash: null, created: o.created || Date.now(), modified: f.lastModified || Date.now(),
+            isUploading: true
         };
         if (o.hint) nd.hint = o.hint;
         if (o.ro) nd.ro = true;
         if (o.tag) nd.tag = o.tag;
-        try { await req(sto(N, 'readwrite').add(nd)); } catch (e) { await deleteBlob(m.id); throw e; }
-        return nd;
+        
+        await req(sto(N, 'readwrite').add(nd));
+        
+        if (o.onStart) {
+            o.onStart(nd);
+            await sleep(20); // Allow UI to render
+        }
+
+        try {
+            await proc(f, pwd, nd);
+            nd.isUploading = false;
+            nd.hash = await hashBlob(f);
+            await req(sto(N, 'readwrite').put(nd));
+            if (o.onFinish) o.onFinish(nd);
+            return nd;
+        } catch (e) {
+            await req(sto(N, 'readwrite').delete(id));
+            await deleteBlob(id);
+            throw e;
+        }
     };
 
     const getBlob = async (nd, pwd) => {
-        const raw = await readBlob(nd.id);
-        if (!raw) return null;
-        if (!nd.encrypted && !nd.compressed) return raw; // FAST PATH: Return immediately without slicing
-
-        let key = null;
-        if (nd.encrypted) {
-            if (!subtleOK()) throw new Error('Decryption needs HTTPS or localhost.');
-            key = await deriveKey(nd.encVer === 2 ? pwd : await legacyKey(pwd), new Uint8Array(nd.salt), 'decrypt');
-        }
-        let off = 0; const ch = [];
-        for (let i = 0; i < nd.chunkSizes.length; i++) {
-            let b = await raw.slice(off, off + nd.chunkSizes[i]).arrayBuffer(); off += nd.chunkSizes[i];
-            if (nd.encrypted) b = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(nd.ivs[i]) }, key, b);
-            if (nd.compressed) b = await new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
-            ch.push(new Uint8Array(b));
-        }
-        return new Blob(ch, { type: nd.mime });
+        try {
+            const raw = await readBlob(nd.id);
+            if (!raw) return null;
+            if (!nd.encrypted && !nd.compressed) return raw;
+            let key = null;
+            if (nd.encrypted) {
+                if (!subtleOK()) throw new Error('Decryption needs HTTPS or localhost.');
+                key = await deriveKey(nd.encVer === 2 ? pwd : await legacyKey(pwd), new Uint8Array(nd.salt), 'decrypt');
+            }
+            let off = 0; const ch = [];
+            for (let i = 0; i < nd.chunkSizes.length; i++) {
+                let b = await raw.slice(off, off + nd.chunkSizes[i]).arrayBuffer(); off += nd.chunkSizes[i];
+                if (nd.encrypted) b = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: new Uint8Array(nd.ivs[i]) }, key, b);
+                if (nd.compressed) b = await new Response(new Blob([b]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer();
+                ch.push(new Uint8Array(b));
+            }
+            return new Blob(ch, { type: nd.mime });
+        } catch (e) { console.error(e); return null; }
     };
 
     const openNode = async nd => {
@@ -1126,8 +1179,8 @@
         if (!l.length) { b.innerHTML = `<div class="empty">${sQuery ? 'No results.' : st.cwd === TRASH ? 'Trash is empty.' : 'Empty folder.'}</div>`; return; }
 
         b.innerHTML = l.map(it => `
-            <div class="row${st.sel.has(it.id) ? ' sel' : ''}" data-id="${esc(it.id)}" draggable="${st.cwd !== TRASH}">
-                <div class="col name"><span class="ico">${icon(it, st.isGrid ? 48 : 16)}</span><span class="label">${esc(it.name)}</span></div>
+            <div class="row${st.sel.has(it.id) ? ' sel' : ''}${it.isUploading ? ' uploading' : ''}" data-id="${esc(it.id)}" draggable="${st.cwd !== TRASH && !it.isUploading}">
+                <div class="col name"><span class="ico">${icon(it, st.isGrid ? 48 : 16)}</span><span class="label">${esc(it.name)} ${it.isUploading ? '<span style="color:var(--t1);font-size:9px;">(Uploading...)</span>' : ''}</span></div>
                 <div class="col type">${cat(it).label}</div>
                 <div class="col size">${it.kind === 'folder' ? '—' : fmtSz(it.size)}</div>
                 <div class="col date">${fmtDt(it.modified)}</div>
@@ -1147,12 +1200,11 @@
     const stats = async () => {
         const a = await req(sto(N).getAll());
         const f = a.filter(x => x.kind === 'file'), d = a.filter(x => x.kind === 'folder');
-        const cb = a.reduce((x, n) => x + (n.compSize || n.size || 0), 0);
         try { if (navigator.storage && navigator.storage.estimate) EST = await navigator.storage.estimate(); } catch (e) { }
-        const q = EST.quota || 0, p = q ? Math.min(100, (cb / q) * 100) : 0;
+        const q = EST.quota || 0, p = q ? Math.min(100, (EST.usage / q) * 100) : 0;
         $('#meterFill').style.width = p + '%';
         $('#meterFill').style.background = p > 85 ? '#e79a8c' : p > 60 ? '#f0d27a' : '#96d873';
-        $('#sbUsed').textContent = fmtSz(cb);
+        $('#sbUsed').textContent = fmtSz(EST.usage); // Use EST.usage for accurate disk tracking
         $('#sbQuota').textContent = q ? fmtSz(q) : 'Unknown';
         $('#sbCount').textContent = `${f.length} files, ${d.length} folders`;
         $('#stItems').textContent = st.items.length + ' objects';
@@ -1169,9 +1221,9 @@
 
         const any = n.length > 0;
         $('#sbPreview').disabled = !(one && one.kind === 'file');
-        $('#sbDownload').disabled = $('#tbDownload').disabled = !any;
-        $('#sbDownloadZip').disabled = $('#tbDownloadZip').disabled = !any;
-        $('#sbDelete').disabled = $('#tbDelete').disabled = !any;
+        $('#sbDownload').disabled = $('#tbDownload').disabled = !any || n.some(i => i.isUploading);
+        $('#sbDownloadZip').disabled = $('#tbDownloadZip').disabled = !any || n.some(i => i.isUploading);
+        $('#sbDelete').disabled = $('#tbDelete').disabled = !any || n.some(i => i.isUploading);
         $('#stSel').textContent = any ? n.length + ' selected' : 'None selected';
     };
 
@@ -1382,6 +1434,10 @@
                 if (!cache.has(path)) {
                     const nd = { id: uid(), parentId: parent, name: await uniq(p, parent), kind: 'folder', size: 0, compSize: 0, created: Date.now(), modified: Date.now() };
                     await req(sto(N, 'readwrite').add(nd)); cache.set(path, nd.id);
+                    if (parent === st.cwd) {
+                        st.items.push(nd);
+                        render();
+                    }
                 }
                 parent = cache.get(path);
             }
@@ -1405,7 +1461,16 @@
                     const parent = await resolve(it.dirs);
                     if (!it.file) continue;
                     stat(`Uploading ${++n}/${files.length}: ${it.file.name}`);
-                    await add(it.file, parent, o && o.pwd || null, { hint: o && o.hint, ro: o && o.ro });
+                    await add(it.file, parent, o && o.pwd || null, { 
+                        hint: o && o.hint, 
+                        ro: o && o.ro,
+                        onStart: (nd) => {
+                            if (parent === st.cwd) {
+                                st.items.push(nd);
+                                render();
+                            }
+                        }
+                    });
                     ok++;
                 } catch (e) { failed++; lastErr = e.message; console.error(e); stat(`Failed: ${it.file ? it.file.name : 'folder'} — ${e.message}`); await sleep(800); }
             }
@@ -1645,7 +1710,6 @@
         if (n.kind !== 'file') return;
         const c = cat(n).cat;
         
-        // Route to RDPlayer for media types
         if (['image', 'video', 'audio'].includes(c)) {
             playMedia(n);
             return;
@@ -1763,11 +1827,21 @@
         const c = $('#ctx-menu'), sel = selNodes(), one = sel.length === 1 ? sel[0] : null, tr = st.cwd === TRASH;
         const isImg = !!one && one.kind === 'file' && cat(one).cat === 'image';
         const vis = {
-            open: !!one && (!tr || one.kind === 'folder'), edit: !!one && one.kind === 'file' && cat(one).cat === 'text' && !tr,
-            download: sel.some(i => i.kind === 'file'), properties: !!one, copy: sel.length > 0 && !tr, cut: sel.length > 0 && !tr,
-            paste: !!clipboard.action && !tr, quickaccess: !!one && !tr, tag: sel.length > 0 && !tr,
-            wallpaper: isImg && !tr, img_edit: isImg && EDITABLE_IMG.includes(extOf(one.name)) && !tr,
-            rename: !!one && !tr, batchrename: sel.length > 1 && !tr, restore: tr && sel.length > 0, delete: sel.length > 0
+            open: !!one && (!tr || one.kind === 'folder') && !one.isUploading,
+            edit: !!one && one.kind === 'file' && cat(one).cat === 'text' && !tr && !one.isUploading,
+            download: sel.some(i => i.kind === 'file' && !i.isUploading),
+            properties: !!one && !one.isUploading,
+            copy: sel.length > 0 && !tr && !sel.some(i => i.isUploading),
+            cut: sel.length > 0 && !tr && !sel.some(i => i.isUploading),
+            paste: !!clipboard.action && !tr,
+            quickaccess: !!one && !tr && !one.isUploading,
+            tag: sel.length > 0 && !tr && !sel.some(i => i.isUploading),
+            wallpaper: isImg && !tr && !one.isUploading,
+            img_edit: isImg && EDITABLE_IMG.includes(extOf(one.name)) && !tr && !one.isUploading,
+            rename: !!one && !tr && !one.isUploading,
+            batchrename: sel.length > 1 && !tr && !sel.some(i => i.isUploading),
+            restore: tr && sel.length > 0 && !sel.some(i => i.isUploading),
+            delete: sel.length > 0 && !sel.some(i => i.isUploading)
         };
         if (!full) for (const k in vis) vis[k] = k === 'paste';
         c.querySelectorAll('[data-ctx]').forEach(el => { el.style.display = vis[el.dataset.ctx] ? 'block' : 'none'; });
@@ -1782,7 +1856,7 @@
     };
 
     const setClip = action => {
-        if (!st.sel.size || st.cwd === TRASH) return false;
+        if (!st.sel.size || st.cwd === TRASH || st.items.filter(i => st.sel.has(i.id)).some(i => i.isUploading)) return false;
         clipboard = { action, ids: Array.from(st.sel) };
         $('#ctx-paste').style.display = 'block';
         stat(action === 'copy' ? 'Copied.' : 'Cut.');
@@ -1939,7 +2013,7 @@
         // internal drag & drop (move)
         $('#listbody').ondragstart = e => {
             const r = e.target.closest('.row');
-            if (!r || st.cwd === TRASH) return e.preventDefault();
+            if (!r || st.cwd === TRASH || st.items.filter(i => st.sel.has(i.id)).some(i => i.isUploading)) return e.preventDefault();
             dragIds = st.sel.has(r.dataset.id) ? Array.from(st.sel) : [r.dataset.id];
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', dragIds.join(','));
@@ -1950,7 +2024,7 @@
             if (!dragIds) return;
             const r = e.target.closest('.row');
             const n = r && st.items.find(i => i.id === r.dataset.id);
-            if (!n || n.kind !== 'folder' || dragIds.includes(n.id)) return;
+            if (!n || n.kind !== 'folder' || dragIds.includes(n.id) || n.isUploading) return;
             e.preventDefault(); e.dataTransfer.dropEffect = 'move';
             clearOver(); r.classList.add('drag-over');
         };
@@ -1959,7 +2033,7 @@
             const ids = dragIds; dragIds = null; clearOver();
             const r = e.target.closest('.row');
             const n = r && st.items.find(i => i.id === r.dataset.id);
-            if (n && n.kind === 'folder' && !ids.includes(n.id)) { e.preventDefault(); e.stopPropagation(); await moveIds(ids, n.id); }
+            if (n && n.kind === 'folder' && !ids.includes(n.id) && !n.isUploading) { e.preventDefault(); e.stopPropagation(); await moveIds(ids, n.id); }
         };
         $('#crumbs').ondragover = e => {
             const cr = e.target.closest('.cr');
@@ -2076,8 +2150,8 @@
         };
         $('#webrtcSend').onclick = async () => {
             if (!dc || dc.readyState !== 'open') return rtcStatus('Not connected yet.');
-            const fs = selNodes().filter(i => i.kind === 'file');
-            if (!fs.length) return rtcStatus('Select one or more files in the main window first.');
+            const fs = selNodes().filter(i => i.kind === 'file' && !i.isUploading);
+            if (!fs.length) return rtcStatus('Select one or more finished files in the main window first.');
             for (const n of fs) {
                 const r = await openNode(n); if (!r) continue;
                 const b = r.blob;

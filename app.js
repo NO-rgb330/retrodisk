@@ -213,6 +213,18 @@
         const my = ++s.tok;
         i = ((i % s.list.length) + s.list.length) % s.list.length;
         const item = s.list[i];
+        
+        // If the file is still uploading, don't load it, just show the friendly message
+        if (item.isUploading) {
+            s.idx = i;
+            s.cur = { item, blob: null, pwd: null };
+            s.mode = item.kind === 'image' ? 'image' : item.kind === 'audio' ? 'audio' : 'video';
+            ui.name.textContent = item.name;
+            ui.sub.textContent = [s.list.length > 1 ? `${i + 1} / ${s.list.length}` : '', fmtSz(item.size)].filter(Boolean).join('  ·  ');
+            showError(s.mode);
+            return;
+        }
+        
         setLoading(true);
         let r = null;
         try { r = await s.opts.load(item); } catch (e) { r = null; }
@@ -620,8 +632,10 @@
         ui.stage.innerHTML = ''; ui.bar.hidden = true;
         const h = ui.err.querySelector('h3'), p = ui.err.querySelector('p'), b = ui.err.querySelector('.rdp-ebtns');
         
-        // If the file is still uploading, show a friendly message instead of a codec error
-        if (it.isUploading) {
+        // Fallback check: if `it.isUploading` wasn't passed for some reason, check the current state in the list
+        const isUp = it.isUploading || (s.list.find(x => x.id === it.id) || {}).isUploading;
+        
+        if (isUp) {
             h.textContent = "File is still uploading";
             p.textContent = "This file is still being uploaded. You cannot preview it properly until the upload is complete.";
             b.innerHTML = '<button class="rdp-pill ghost" data-a="close">Close</button>';
@@ -1012,6 +1026,10 @@
         
         if (writ) await writ.close();
         else await writeBlob(nd.id, new Blob(chunks));
+        
+        // Mark as finished immediately in the DB
+        nd.isUploading = false;
+        await req(sto(N, 'readwrite').put(nd));
     };
 
     const thumb = f => {
@@ -1465,16 +1483,17 @@
                     stat(`Uploading ${++n}/${files.length}: ${file.name}`);
                     await proc(file, pwd, nd);
                     
-                    // Mark as finished
+                    // Mark as finished visually FIRST
                     nd.isUploading = false;
-                    nd.hash = await hashBlob(file);
-                    await req(sto(N, 'readwrite').put(nd)); // Save to DB
-                    
                     if (nd.parentId === st.cwd) {
                         const item = st.items.find(x => x.id === nd.id);
                         if (item) Object.assign(item, nd);
-                        render(); // Re-render to remove "(Uploading...)" tag
+                        render(); // Instant visual update!
                     }
+                    
+                    // Then compute hash and save to DB
+                    nd.hash = await hashBlob(file);
+                    await req(sto(N, 'readwrite').put(nd));
 
                     // Generate thumbnail in background
                     if (!pwd) {

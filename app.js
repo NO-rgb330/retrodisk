@@ -986,7 +986,7 @@
 
             await req(sto(N, 'readwrite').put(nd));
             
-            updateStatsUI();
+            await updateStatsUI(); // Update sidebar live
             
             if (nd.parentId === st.cwd) {
                 const item = st.items.find(x => x.id === nd.id);
@@ -1053,7 +1053,7 @@
         
         if (o.onStart) {
             o.onStart(nd);
-            await sleep(20); // Allow UI to render
+            await sleep(20);
         }
 
         try {
@@ -1204,7 +1204,7 @@
         const q = EST.quota || 0, p = q ? Math.min(100, (EST.usage / q) * 100) : 0;
         $('#meterFill').style.width = p + '%';
         $('#meterFill').style.background = p > 85 ? '#e79a8c' : p > 60 ? '#f0d27a' : '#96d873';
-        $('#sbUsed').textContent = fmtSz(EST.usage); // Use EST.usage for accurate disk tracking
+        $('#sbUsed').textContent = fmtSz(EST.usage);
         $('#sbQuota').textContent = q ? fmtSz(q) : 'Unknown';
         $('#sbCount').textContent = `${f.length} files, ${d.length} folders`;
         $('#stItems').textContent = st.items.length + ' objects';
@@ -1456,24 +1456,68 @@
             const o = files.length ? await offer(label) : null;
             const resolve = dirResolver(st.cwd);
             let ok = 0, failed = failedPre, n = 0, lastErr = '';
+            
+            // Phase 1: Pre-create all nodes so they appear instantly
+            stat('Preparing files...');
+            const queue = [];
             for (const it of items) {
-                try {
-                    const parent = await resolve(it.dirs);
-                    if (!it.file) continue;
-                    stat(`Uploading ${++n}/${files.length}: ${it.file.name}`);
-                    await add(it.file, parent, o && o.pwd || null, { 
-                        hint: o && o.hint, 
-                        ro: o && o.ro,
-                        onStart: (nd) => {
-                            if (parent === st.cwd) {
-                                st.items.push(nd);
-                                render();
-                            }
-                        }
-                    });
-                    ok++;
-                } catch (e) { failed++; lastErr = e.message; console.error(e); stat(`Failed: ${it.file ? it.file.name : 'folder'} — ${e.message}`); await sleep(800); }
+                const parent = await resolve(it.dirs);
+                if (!it.file) continue;
+                
+                const name = await uniq(clean(it.file.name || 'untitled') || 'untitled', parent);
+                const id = uid();
+                const nd = {
+                    id, parentId: parent, name, kind: 'file', mime: it.file.type || 'application/octet-stream',
+                    size: it.file.size, compSize: 0, compressed: false,
+                    encrypted: !!o?.pwd, encVer: 2, salt: null, ivs: [], chunkSizes: [],
+                    thumb: null, hash: null, created: Date.now(), modified: it.file.lastModified || Date.now(),
+                    isUploading: true
+                };
+                if (o?.hint) nd.hint = o.hint;
+                if (o?.ro) nd.ro = true;
+                
+                await req(sto(N, 'readwrite').add(nd));
+                if (parent === st.cwd) {
+                    st.items.push(nd);
+                    if (st.items.length % 20 === 0) { render(); await sleep(0); }
+                }
+                queue.push({ file: it.file, nd, pwd: o?.pwd || null });
             }
+            render();
+            await sleep(50); // yield to UI
+
+            // Phase 2: Process the queue sequentially
+            for (const { file, nd, pwd } of queue) {
+                try {
+                    stat(`Uploading ${++n}/${files.length}: ${file.name}`);
+                    await proc(file, pwd, nd);
+                    nd.isUploading = false;
+                    nd.hash = await hashBlob(file);
+                    
+                    // Generate thumbnail in background
+                    if (!pwd) {
+                        thumb(file).then(th => {
+                            if (th) {
+                                nd.thumb = th;
+                                req(sto(N, 'readwrite').put(nd)).then(() => {
+                                    if (nd.parentId === st.cwd) {
+                                        const ico = document.querySelector(`.row[data-id="${nd.id}"] .ico`);
+                                        if (ico) ico.innerHTML = icon(nd, st.isGrid ? 48 : 16);
+                                    }
+                                });
+                            }
+                        }).catch(()=>{});
+                    }
+                    ok++;
+                } catch (e) {
+                    failed++; lastErr = e.message; console.error(e); stat(`Failed: ${file.name} — ${e.message}`); await sleep(800);
+                    if (nd.parentId === st.cwd) {
+                        st.items = st.items.filter(x => x.id !== nd.id);
+                        render();
+                    }
+                }
+            }
+            
             await refresh();
             stat(`Added ${ok} of ${files.length} file(s).${failed ? ' ' + failed + ' failed' + (lastErr ? ' (' + lastErr + ')' : ' or were unreadable') + '.' : ''}`);
         } finally { busy = false; }

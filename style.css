@@ -40,25 +40,38 @@ button,input,textarea,select{font-family:Tahoma,Verdana,sans-serif}
 }
 
 /* ==========================================================================
-   RETRO RDPlayer CSS
+   RETRO RDPlayer CSS (FIXED)
    ========================================================================== */
 .rdp {
     position: fixed; inset: 0; z-index: 5000;
-    background: var(--bg) !important; /* Retro background */
+    background: #1a1a1a !important; /* Opaque background to hide app UI */
     display: flex; flex-direction: column;
-    color: var(--tx) !important; font-family: Tahoma, Verdana, sans-serif !important;
+    color: #e8ecef !important; font-family: Tahoma, Verdana, sans-serif !important;
     opacity: 0; pointer-events: none; transition: opacity 0.15s;
     border: 4px solid var(--win);
 }
 .rdp:not([hidden]) { opacity: 1; pointer-events: auto; }
+
 .rdp-stage {
     flex: 1; position: relative; display: flex; align-items: center; justify-content: center;
     overflow: hidden; padding: 10px; background: #000 !important;
     border: 2px solid var(--bd) !important; margin: 4px;
 }
-.rdp-view { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-.rdp-img { max-width: 100%; max-height: 100%; object-fit: contain; opacity: 0; transition: opacity 0.2s; }
+.rdp-view { 
+    width: 100%; height: 100%; position: relative; overflow: hidden; 
+}
+.rdp-img { 
+    position: absolute; top: 50%; left: 50%; 
+    display: block; max-width: none; max-height: none; 
+    opacity: 0; transition: opacity 0.2s; 
+}
 .rdp-img.ready { opacity: 1; }
+
+/* Video Wrapper - must be full size and relative for the play button to center */
+.rdp-vwrap { 
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; 
+    position: relative; overflow: hidden;
+}
 .rdp-video { max-width: 100%; max-height: 100%; outline: none; }
 
 /* Retro Title Bar */
@@ -178,9 +191,17 @@ button,input,textarea,select{font-family:Tahoma,Verdana,sans-serif}
 /* Misc Retro Details */
 .rdp.idle .rdp-top, .rdp.idle .rdp-bar, .rdp.idle .rdp-nav { opacity: 0; pointer-events: none; }
 .rdp-stage.audioonly video { display: none; }
-.rdp-bigplay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.8); opacity: 0.8; pointer-events: none; transition: opacity 0.2s, transform 0.2s; width: 80px; height: 80px; background: rgba(0,0,0,0.5) !important; border-radius: 0 !important; display: flex; align-items: center; justify-content: center; }
+
+/* Big Play Button FIX: hidden by default, shown only when paused */
+.rdp-bigplay { 
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.8); 
+    opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; 
+    width: 80px; height: 80px; background: rgba(0,0,0,0.5) !important; border-radius: 50% !important; 
+    display: flex; align-items: center; justify-content: center; 
+}
 .rdp-paused .rdp-bigplay { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 .rdp-bigplay svg { width: 40px; height: 40px; fill: #fff; margin-left: 6px; }
+
 .rdp-acard { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; max-width: 500px; }
 .rdp-viz { width: 100%; height: 200px; background: #000 !important; border: 2px inset #fff !important; }
 .rdp-aname { font-size: 16px; color: #fff; font-weight: bold; text-align: center; text-shadow: 1px 1px 0 #000; }

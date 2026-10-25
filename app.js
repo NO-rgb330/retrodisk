@@ -619,6 +619,16 @@
         setLoading(false); setBuffering(false);
         ui.stage.innerHTML = ''; ui.bar.hidden = true;
         const h = ui.err.querySelector('h3'), p = ui.err.querySelector('p'), b = ui.err.querySelector('.rdp-ebtns');
+        
+        // If the file is still uploading, show a friendly message instead of a codec error
+        if (it.isUploading) {
+            h.textContent = "File is still uploading";
+            p.textContent = "This file is still being uploaded. You cannot preview it properly until the upload is complete.";
+            b.innerHTML = '<button class="rdp-pill ghost" data-a="close">Close</button>';
+            ui.err.hidden = false;
+            return;
+        }
+        
         if (kind === 'image') {
             h.textContent = "This picture can't be displayed";
             p.textContent = `Your browser couldn't decode this ${ext} image. Formats such as HEIC, TIFF or RAW are only supported by some browsers (Safari opens HEIC and TIFF). You can still save the file.`;
@@ -1031,43 +1041,6 @@
             } else e.onload = draw;
             e.src = u;
         });
-    };
-
-    const add = async (f, pid, pwd, o = {}) => {
-        const name = await uniq(clean(f.name || 'untitled') || 'untitled', pid, o.exclude);
-        const th = pwd ? null : await thumb(f);
-        const id = uid();
-        
-        const nd = {
-            id, parentId: pid, name, kind: 'file', mime: f.type || 'application/octet-stream',
-            size: f.size, compSize: 0, compressed: false,
-            encrypted: !!pwd, encVer: 2, salt: null, ivs: [], chunkSizes: [],
-            thumb: th, hash: null, created: o.created || Date.now(), modified: f.lastModified || Date.now(),
-            isUploading: true
-        };
-        if (o.hint) nd.hint = o.hint;
-        if (o.ro) nd.ro = true;
-        if (o.tag) nd.tag = o.tag;
-        
-        await req(sto(N, 'readwrite').add(nd));
-        
-        if (o.onStart) {
-            o.onStart(nd);
-            await sleep(20);
-        }
-
-        try {
-            await proc(f, pwd, nd);
-            nd.isUploading = false;
-            nd.hash = await hashBlob(f);
-            await req(sto(N, 'readwrite').put(nd));
-            if (o.onFinish) o.onFinish(nd);
-            return nd;
-        } catch (e) {
-            await req(sto(N, 'readwrite').delete(id));
-            await deleteBlob(id);
-            throw e;
-        }
     };
 
     const getBlob = async (nd, pwd) => {
@@ -1491,9 +1464,18 @@
                 try {
                     stat(`Uploading ${++n}/${files.length}: ${file.name}`);
                     await proc(file, pwd, nd);
+                    
+                    // Mark as finished
                     nd.isUploading = false;
                     nd.hash = await hashBlob(file);
+                    await req(sto(N, 'readwrite').put(nd)); // Save to DB
                     
+                    if (nd.parentId === st.cwd) {
+                        const item = st.items.find(x => x.id === nd.id);
+                        if (item) Object.assign(item, nd);
+                        render(); // Re-render to remove "(Uploading...)" tag
+                    }
+
                     // Generate thumbnail in background
                     if (!pwd) {
                         thumb(file).then(th => {
@@ -1544,7 +1526,8 @@
     const playMedia = (n) => {
         const mediaItems = st.items.filter(i => i.kind === 'file' && ['image', 'video', 'audio'].includes(cat(i).cat));
         const list = mediaItems.map(i => ({
-            id: i.id, name: i.name, kind: cat(i).cat, mime: i.mime, size: i.size, ext: extOf(i.name), editable: EDITABLE_IMG.includes(extOf(i.name))
+            id: i.id, name: i.name, kind: cat(i).cat, mime: i.mime, size: i.size, ext: extOf(i.name), editable: EDITABLE_IMG.includes(extOf(i.name)),
+            isUploading: i.isUploading // <--- Pass this to the player
         }));
         const index = list.findIndex(i => i.id === n.id);
         RDPlayer.open({

@@ -263,64 +263,67 @@
 
     const step = d => { if (S && S.list.length > 1) show(S.idx + d); };
 
-    async function mountImage(my) {
+    function mountImage(my) {
         const s = S, item = s.cur.item;
         ui.stage.innerHTML = '<div class="rdp-view"><img class="rdp-img" alt="" draggable="false"></div>';
         const view = ui.stage.querySelector('.rdp-view'), img = view.querySelector('img');
         s.url = URL.createObjectURL(s.cur.blob);
         img.src = s.url;
-        try { await img.decode(); } catch (e) { if (S === s && my === s.tok) showError('image'); return; }
-        if (S !== s || my !== s.tok) return;
-        const w = img.naturalWidth || 300, h = img.naturalHeight || 150;
-        img.style.width = w + 'px'; img.style.height = h + 'px'; img.style.marginLeft = -w / 2 + 'px'; img.style.marginTop = -h / 2 + 'px';
-        s.im = { view, img, w, h, scale: 1, tx: 0, ty: 0, rot: 0, fit: true, svg: item.ext === 'svg', ptr: new Map() };
-        ui.sub.textContent = [s.list.length > 1 ? `${s.idx + 1} / ${s.list.length}` : '', `${w} × ${h}`, fmtSz(item.size)].filter(Boolean).join('  ·  ');
-        layoutImage(true);
-        requestAnimationFrame(() => img.classList.add('ready'));
+        
+        img.onload = () => {
+            if (S !== s || my !== s.tok) return;
+            const w = img.naturalWidth || 300, h = img.naturalHeight || 150;
+            img.style.width = w + 'px'; img.style.height = h + 'px'; img.style.marginLeft = -w / 2 + 'px'; img.style.marginTop = -h / 2 + 'px';
+            s.im = { view, img, w, h, scale: 1, tx: 0, ty: 0, rot: 0, fit: true, svg: item.ext === 'svg', ptr: new Map() };
+            ui.sub.textContent = [s.list.length > 1 ? `${s.idx + 1} / ${s.list.length}` : '', `${w} × ${h}`, fmtSz(item.size)].filter(Boolean).join('  ·  ');
+            layoutImage(true);
+            requestAnimationFrame(() => img.classList.add('ready'));
 
-        view.addEventListener('wheel', e => {
-            e.preventDefault();
-            const im = s.im; if (!im) return;
-            let dy = e.deltaY; if (e.deltaMode === 1) dy *= 33;
-            const r = view.getBoundingClientRect();
-            zoomTo(im.scale * Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0018)), e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2, false);
-        }, { passive: false });
-        view.addEventListener('dblclick', e => {
-            const im = s.im; if (!im) return;
-            const r = view.getBoundingClientRect(), f = fitScale();
-            if (im.scale > f * 1.02) fitImage(true);
-            else zoomTo(f >= 0.98 ? 2 : 1, e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2, true);
-        });
-        view.addEventListener('pointerdown', e => {
-            const im = s.im; if (!im || e.button > 0) return;
-            view.setPointerCapture(e.pointerId);
-            im.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, type: e.pointerType });
-            im.drag = { tx: im.tx, ty: im.ty, moved: false };
-            if (im.ptr.size === 2) { const [a, b] = [...im.ptr.values()]; im.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, scale: im.scale }; }
-            view.classList.add('dragging'); im.img.classList.remove('anim');
-        });
-        view.addEventListener('pointermove', e => {
-            const im = s.im; if (!im || !im.ptr.has(e.pointerId)) return;
-            const p = im.ptr.get(e.pointerId); const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-            if (im.ptr.size === 2 && im.pinch) {
-                const [a, b] = [...im.ptr.values()], d = Math.hypot(a.x - b.x, a.y - b.y) || 1, r = view.getBoundingClientRect();
-                zoomTo(im.pinch.scale * d / im.pinch.d, (a.x + b.x) / 2 - r.left - r.width / 2, (a.y + b.y) / 2 - r.top - r.height / 2, false);
-                im.drag.moved = true; return;
-            }
-            if (Math.abs(e.clientX - p.sx) + Math.abs(e.clientY - p.sy) > 3) im.drag.moved = true;
-            if (im.scale > fitScale() * 1.001) { im.tx += dx; im.ty += dy; im.fit = false; clampPan(); applyImage(false); }
-        });
-        const up = e => {
-            const im = s.im; if (!im || !im.ptr.has(e.pointerId)) return;
-            const p = im.ptr.get(e.pointerId); im.ptr.delete(e.pointerId);
-            if (im.ptr.size < 2) im.pinch = null;
-            if (!im.ptr.size) {
-                view.classList.remove('dragging');
-                const dx = e.clientX - p.sx, dy = e.clientY - p.sy;
-                if (p.type === 'touch' && im.scale <= fitScale() * 1.02 && Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
-            }
+            view.addEventListener('wheel', e => {
+                e.preventDefault();
+                const im = s.im; if (!im) return;
+                let dy = e.deltaY; if (e.deltaMode === 1) dy *= 33;
+                const r = view.getBoundingClientRect();
+                zoomTo(im.scale * Math.exp(-dy * (e.ctrlKey ? 0.01 : 0.0018)), e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2, false);
+            }, { passive: false });
+            view.addEventListener('dblclick', e => {
+                const im = s.im; if (!im) return;
+                const r = view.getBoundingClientRect(), f = fitScale();
+                if (im.scale > f * 1.02) fitImage(true);
+                else zoomTo(f >= 0.98 ? 2 : 1, e.clientX - r.left - r.width / 2, e.clientY - r.top - r.height / 2, true);
+            });
+            view.addEventListener('pointerdown', e => {
+                const im = s.im; if (!im || e.button > 0) return;
+                view.setPointerCapture(e.pointerId);
+                im.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, type: e.pointerType });
+                im.drag = { tx: im.tx, ty: im.ty, moved: false };
+                if (im.ptr.size === 2) { const [a, b] = [...im.ptr.values()]; im.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, scale: im.scale }; }
+                view.classList.add('dragging'); im.img.classList.remove('anim');
+            });
+            view.addEventListener('pointermove', e => {
+                const im = s.im; if (!im || !im.ptr.has(e.pointerId)) return;
+                const p = im.ptr.get(e.pointerId); const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+                if (im.ptr.size === 2 && im.pinch) {
+                    const [a, b] = [...im.ptr.values()], d = Math.hypot(a.x - b.x, a.y - b.y) || 1, r = view.getBoundingClientRect();
+                    zoomTo(im.pinch.scale * d / im.pinch.d, (a.x + b.x) / 2 - r.left - r.width / 2, (a.y + b.y) / 2 - r.top - r.height / 2, false);
+                    im.drag.moved = true; return;
+                }
+                if (Math.abs(e.clientX - p.sx) + Math.abs(e.clientY - p.sy) > 3) im.drag.moved = true;
+                if (im.scale > fitScale() * 1.001) { im.tx += dx; im.ty += dy; im.fit = false; clampPan(); applyImage(false); }
+            });
+            const up = e => {
+                const im = s.im; if (!im || !im.ptr.has(e.pointerId)) return;
+                const p = im.ptr.get(e.pointerId); im.ptr.delete(e.pointerId);
+                if (im.ptr.size < 2) im.pinch = null;
+                if (!im.ptr.size) {
+                    view.classList.remove('dragging');
+                    const dx = e.clientX - p.sx, dy = e.clientY - p.sy;
+                    if (p.type === 'touch' && im.scale <= fitScale() * 1.02 && Math.abs(dx) > 70 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
+                }
+            };
+            view.addEventListener('pointerup', up); view.addEventListener('pointercancel', up);
         };
-        view.addEventListener('pointerup', up); view.addEventListener('pointercancel', up);
+        img.onerror = () => { if (S === s && my === s.tok) showError('image'); };
     }
 
     const imDims = im => (im.rot % 180 !== 0 ? [im.h, im.w] : [im.w, im.h]);
@@ -1018,7 +1021,8 @@
     const getBlob = async (nd, pwd) => {
         const raw = await readBlob(nd.id);
         if (!raw) return null;
-        if (!nd.encrypted && !nd.compressed) return raw.slice(0, raw.size, nd.mime);
+        if (!nd.encrypted && !nd.compressed) return raw; // FAST PATH: Return immediately without slicing
+
         let key = null;
         if (nd.encrypted) {
             if (!subtleOK()) throw new Error('Decryption needs HTTPS or localhost.');
@@ -1231,7 +1235,7 @@
     const confirmDlg = (title, label, okText) => dlg({ title, label, input: false, okText }).then(Boolean);
 
     const ask = (nd, err) => new Promise(res => {
-        const b = document.createElement('div'); b.className = 'modal-back ask-overlay'; b.style.zIndex = '6000'; // FIXED Z-INDEX
+        const b = document.createElement('div'); b.className = 'modal-back ask-overlay'; b.style.zIndex = '6000';
         b.innerHTML = `
             <div class="modalwin dlgwin">
                 <div class="titlebar"><div class="title"><span class="logo"></span>Password Required</div><div class="winbtns"><button class="close" id="pwc">✕</button></div></div>

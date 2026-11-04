@@ -112,39 +112,5 @@ Encryption	Web Crypto	Web Crypto	Web Crypto
 Compression	Gzip	Gzip	Gzip
 Media Playback	H.264, VP8/VP9, AV1	H.264, VP8/VP9, AV1	HEVC, H.264
 WebRTC Share	Supported	Supported	Supported
-Note: OPFS (Origin Private File System) is only available in secure contexts (https:// or localhost).
-
-Deployment
-Because RetroDisk is entirely client-side, it is incredibly easy to host on GitHub Pages.
-
-Create a new repository on GitHub.
-
-Upload the following files to the root of the repository:
-
-index.html
-
-style.css
-
-app.js
-
-worker.js
-
-Go to the repository Settings > Pages.
-
-Under "Build and deployment", set the source to Deploy from a branch.
-
-Select the main (or master) branch and the / (root) folder, then click Save.
-
-GitHub will provide a URL (e.g., https://username.github.io/repository/). Open it to use the app.
-
-Limitations and Known Issues
-Storage Quota: Browsers enforce strict limits on how much a single website can store. The app requests persistent storage, but clearing your browser's site data will permanently delete all files.
-
-Secure Context: Encryption and OPFS require the page to be served over HTTPS or localhost.
-
-Secure Shred: Because browsers use a Virtual File System and modern SSDs use wear-leveling, the Secure Shred feature cannot guarantee physical erasure of the old data blocks.
-
-Codec Support: Video and audio playback is entirely dependent on the browser's built-in codecs. Unsupported formats (like HEVC/H.265 in Chrome, or certain AVI/WMV files) will show a playback error.
-
-Memory Limits: Very large files (over 2GB) might still cause issues on low-RAM devices, especially during the hashing or thumbnail generation phases.
+Note: OPFS (Origin Private File System) is only available in secure contexts (https:// or localhost), and cannot be run in file:// extension.
 

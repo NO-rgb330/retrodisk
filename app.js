@@ -1146,6 +1146,45 @@
         await req(sto(N, 'readwrite').delete(id));
     };
 
+    // Create a file node from a Blob/File, run it through proc() (chunked + optional
+    // gzip/AES-GCM), then finalise with a SHA-256 hash and a thumbnail.
+    const add = async (file, pid, pwd, opts = {}) => {
+        if (pwd && !subtleOK()) throw new Error('Encryption needs HTTPS or localhost.');
+        const name = await uniq(clean(file.name || 'untitled') || 'untitled', pid, opts.exclude);
+        const nd = {
+            id: uid(), parentId: pid, name, kind: 'file',
+            mime: file.type || 'application/octet-stream',
+            size: file.size, compSize: 0, compressed: false,
+            encrypted: !!pwd, encVer: 2, salt: null, ivs: [], chunkSizes: [],
+            thumb: null, hash: null,
+            created: opts.created || Date.now(),
+            modified: file.lastModified || Date.now(),
+            isUploading: true
+        };
+        if (opts.hint) nd.hint = opts.hint;
+        if (opts.ro) nd.ro = true;
+        if (opts.tag) nd.tag = opts.tag;
+
+        await req(sto(N, 'readwrite').add(nd));
+        try {
+            await proc(file, pwd, nd);
+        } catch (e) {
+            try { await req(sto(N, 'readwrite').delete(nd.id)); } catch (x) {}
+            try { await deleteBlob(nd.id); } catch (x) {}
+            throw e;
+        }
+        nd.isUploading = false;
+        try { nd.hash = await hashBlob(file); } catch (e) {}
+        await req(sto(N, 'readwrite').put(nd));
+
+        if (!pwd) {
+            thumb(file).then(th => {
+                if (th) { nd.thumb = th; req(sto(N, 'readwrite').put(nd)).catch(() => {}); }
+            }).catch(() => {});
+        }
+        return nd;
+    };
+
     // ---------- rendering ----------
     const render = () => {
         const b = $('#listbody');
@@ -1434,6 +1473,31 @@
             }
             return parent;
         };
+    };
+
+    // Extract a stored ZIP file into a target folder. Returns the number of
+    // files written. Runs entirely locally — no network, no server.
+    const extractZipNode = async (zipNode, targetPid) => {
+        if (typeof fflate === 'undefined') throw new Error('ZIP library failed to load.');
+        const r = await openNode(zipNode);
+        if (!r) throw new Error('Could not read ZIP file.');
+        const un = fflate.unzipSync(new Uint8Array(await r.blob.arrayBuffer()));
+        const resolve = dirResolver(targetPid);
+        let cnt = 0;
+        for (const [name, data] of Object.entries(un)) {
+            if (name.startsWith('__MACOSX/')) continue;
+            const parts = name.split('/').filter(p => p && p !== '.' && p !== '..').map(clean).filter(Boolean);
+            if (!parts.length) continue;
+            const isDir = name.endsWith('/');
+            const fileName = isDir ? null : parts.pop();
+            const parent = await resolve(parts);
+            if (!isDir) {
+                await add(new File([data], fileName), parent, null);
+                cnt++;
+                if (cnt % 5 === 0) stat(`Extracting… ${cnt} file(s)`);
+            }
+        }
+        return cnt;
     };
 
     const importItems = async (items, failedPre = 0) => {
@@ -2000,6 +2064,7 @@
         const vis = {
             open: !!one && (!tr || one.kind === 'folder') && !one.isUploading,
             edit: !!one && one.kind === 'file' && cat(one).cat === 'text' && !tr && !one.isUploading,
+            extract_here: !!one && one.kind === 'file' && extOf(one.name) === 'zip' && !tr && !one.isUploading,
             download: sel.some(i => i.kind === 'file' && !i.isUploading),
             properties: !!one && !one.isUploading,
             copy: sel.length > 0 && !tr && !sel.some(i => i.isUploading),
@@ -2081,6 +2146,23 @@
             try {
                 if (a === 'open') { if (n) n.kind === 'folder' ? nav(n.id) : prev(n); }
                 else if (a === 'edit') { if (n) prev(n, { edit: true }); }
+                else if (a === 'extract_here') {
+                    if (!n || n.kind !== 'file' || extOf(n.name) !== 'zip') return stat('Not a ZIP file.');
+                    if (busy) return stat('Another operation is still running.');
+                    if (!canWrite()) return;
+                    busy = true;
+                    try {
+                        stat(`Extracting ${n.name}…`);
+                        const cnt = await extractZipNode(n, st.cwd);
+                        stat(`Extracted ${cnt} file(s) from ${n.name}.`);
+                    } catch (err) {
+                        console.error(err);
+                        stat('Extraction failed: ' + err.message);
+                    } finally {
+                        busy = false;
+                        await refresh();
+                    }
+                }
                 else if (a === 'properties') showProps();
                 else if (a === 'quickaccess') {
                     const ids = Array.from(st.sel);

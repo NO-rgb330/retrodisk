@@ -225,3 +225,29 @@ button,input,textarea,select{font-family:Tahoma,Verdana,sans-serif}
 .rdp-menu { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 8px; background: var(--win) !important; border: 1px solid var(--bd) !important; border-radius: 0 !important; box-shadow: 2px 2px 0 #808080 !important; padding: 4px; display: flex; flex-direction: column; gap: 2px; z-index: 100; }
 .rdp-menu button { background: none !important; border: none !important; color: var(--tx) !important; padding: 6px 16px; text-align: left; cursor: pointer; font-size: 11px !important; border-radius: 0 !important; font-weight: normal !important; width: 100%; }
 .rdp-menu button:hover { background: var(--row-s) !important; color: var(--row-st) !important; }
+
+/* ==========================================================================
+   OPTIONAL ZIP EXTRACTION POLISH  (pure CSS — no JS changes required)
+   Delete this whole block if you want the exact original styling back.
+   ========================================================================== */
+
+/* 1. Make "Extract Here" visually distinct in the context menu */
+#ctx-menu [data-ctx="extract_here"] {
+    font-weight: bold;
+    color: var(--t1);
+    border-left: 2px solid var(--t1);
+    padding-left: 10px;
+}
+#ctx-menu [data-ctx="extract_here"]:hover {
+    color: var(--row-st);
+}
+
+/* 2. Subtle fade-in for any row whose label changes (upload finish / fresh extract) */
+.row .label {
+    transition: color 0.25s ease;
+}
+
+/* 3. Slightly stronger "Empty folder" hint when a ZIP produced no files */
+.empty {
+    line-height: 1.8;
+}

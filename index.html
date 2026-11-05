@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>RetroDisk</title>
+    <title>RetroDisk 9.5</title>
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/atom-one-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/highlight.min.js"></script>
@@ -16,7 +16,7 @@
 <body data-theme="default">
     <div id="app">
         <div class="titlebar">
-            <div class="title"><span class="logo"></span>RetroDisk</div>
+            <div class="title"><span class="logo"></span>RetroDisk 9.5</div>
             <button class="fs-btn" id="btnFullscreen">⛶ Fullscreen</button>
         </div>
         
@@ -113,7 +113,7 @@
                     <h3>Disk</h3>
                     <div class="meter"><i id="meterFill"></i></div>
                     <div class="kv"><span>Virtual Used</span><b id="sbUsed">—</b></div>
-                    <div class="kv"><span>Quota</span><b id="sbQuota">—</b></div>
+                    <div class="kv"><span>Total Quota</span><b id="sbQuota">—</b></div>
                     <div class="kv"><span>Objects</span><b id="sbCount">—</b></div>
                 </div>
                 <div class="panel">
@@ -319,23 +319,47 @@
         </div>
     </div>
 
+    <!-- WebRTC Modal -->
     <div class="modal-back" id="webrtc-modal" hidden>
-        <div class="modalwin">
-            <div class="titlebar"><div class="title"><span class="logo"></span>WebRTC Local Share</div><div class="winbtns"><button class="close" id="webrtcClose">✕</button></div></div>
-            <div class="dlgbody">
-                <p>Send the selected files to another browser. Both sides exchange one code by hand (copy/paste).</p>
-                <label>Paste the code from the other side:</label>
-                <textarea class="webrtc-box" id="webrtcInput"></textarea>
-                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-                    <button class="btn" id="webrtcGenerate">1. Create Offer (Host)</button>
-                    <button class="btn" id="webrtcAccept">2. Accept Offer (Receiver)</button>
-                    <button class="btn" id="webrtcApply">3. Apply Answer (Host)</button>
+        <div class="modalwin dlgwin" style="width:500px;">
+            <div class="titlebar"><div class="title"><span class="logo"></span>Direct Cable Connection</div><div class="winbtns"><button class="close" id="webrtcClose">✕</button></div></div>
+            <div class="dlgbody" style="padding-bottom:0;">
+                <p style="margin-top:0; color:var(--tx-m);">Transfer files directly to another browser on your network without a server.</p>
+                
+                <div class="wrtc-box">
+                    <h4>Step 1: Host</h4>
+                    <div style="display:flex;gap:6px;margin-bottom:10px;">
+                        <button class="btn" id="webrtcGenerate" style="flex:1;">Create Offer</button>
+                        <button class="btn" id="webrtcApply" style="flex:1;" disabled>Accept Answer</button>
+                    </div>
                 </div>
-                <label>Your code (copy to the other side):</label>
-                <textarea class="webrtc-box" id="webrtcOutput" readonly></textarea>
-                <div style="display:flex;align-items:center;gap:8px;">
-                    <button class="btn" id="webrtcSend">Send Selected Files</button>
-                    <span id="webrtcStatus" style="color:var(--tx-m);"></span>
+
+                <div class="wrtc-box">
+                    <h4>Step 2: Receiver</h4>
+                    <div style="display:flex;gap:6px;margin-bottom:10px;">
+                        <button class="btn" id="webrtcAccept" style="flex:1;">Accept Offer</button>
+                    </div>
+                </div>
+
+                <div class="wrtc-box" style="background:var(--pn); border-color:var(--bd-l);">
+                    <h4>Connection Codes</h4>
+                    <label style="font-size:10px; color:var(--tx-m);">Paste the other person's code here:</label>
+                    <textarea class="webrtc-box" id="webrtcInput" placeholder="Paste code here..."></textarea>
+                    
+                    <label style="font-size:10px; color:var(--tx-m);">Your code (send this to them):</label>
+                    <div style="display:flex; gap:6px;">
+                        <textarea class="webrtc-box" id="webrtcOutput" readonly placeholder="Generate a code above..."></textarea>
+                    </div>
+                    <button class="btn" id="webrtcCopy" style="width:100%; margin-bottom:10px;">Copy My Code</button>
+                </div>
+
+                <div class="wrtc-box" style="text-align:center;">
+                    <h4>Step 3: Transfer</h4>
+                    <div id="webrtcStatus" style="font-weight:bold; margin-bottom:10px; color:var(--t1);">Not connected.</div>
+                    <div style="height:16px; background:var(--in); border:1px solid var(--in-b); border-radius:2px; overflow:hidden; margin-bottom:10px; display:none;" id="webrtcProgressWrap">
+                        <div id="webrtcProgressBar" style="height:100%; width:0%; background:#4c9a2a; transition:width 0.1s;"></div>
+                    </div>
+                    <button class="btn" id="webrtcSend" style="width:100%;" disabled>Send Selected Files</button>
                 </div>
             </div>
             <div class="dlgfoot"><button class="btn" id="webrtcOk">Close</button></div>

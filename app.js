@@ -2152,9 +2152,18 @@
                     if (!canWrite()) return;
                     busy = true;
                     try {
-                        stat(`Extracting ${n.name}…`);
-                        const cnt = await extractZipNode(n, st.cwd);
-                        stat(`Extracted ${cnt} file(s) from ${n.name}.`);
+                        // Folder name = zip name without ".zip"; fall back to "Extracted" for a bare ".zip"
+                        const base = n.name.replace(/\.zip$/i, '').trim() || 'Extracted';
+                        const folderName = await uniq(clean(base), st.cwd);
+                        const folder = {
+                            id: uid(), parentId: st.cwd, name: folderName, kind: 'folder',
+                            size: 0, compSize: 0, created: Date.now(), modified: Date.now()
+                        };
+                        await req(sto(N, 'readwrite').add(folder));
+
+                        stat(`Extracting ${n.name} → "${folderName}"…`);
+                        const cnt = await extractZipNode(n, folder.id);
+                        stat(`Extracted ${cnt} file(s) from ${n.name} into "${folderName}".`);
                     } catch (err) {
                         console.error(err);
                         stat('Extraction failed: ' + err.message);

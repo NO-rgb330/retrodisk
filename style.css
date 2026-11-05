@@ -44,12 +44,32 @@ button,input,textarea,select{font-family:Tahoma,Verdana,sans-serif}
 .row.uploading .ico { animation: pulse 1s infinite alternate; }
 @keyframes pulse { 0% { opacity: 0.3; } 100% { opacity: 1; } }
 
+/* WebRTC Wizard */
+.wrtc-box {
+    background: var(--hd);
+    border: 1px solid var(--bd-l);
+    border-radius: 3px;
+    padding: 10px;
+    margin-bottom: 12px;
+}
+.wrtc-box h4 {
+    margin: 0 0 8px 0;
+    font-size: 11px;
+    color: var(--tx);
+    border-bottom: 1px solid var(--bd-l);
+    padding-bottom: 4px;
+}
+.wrtc-box .webrtc-box {
+    height: 50px;
+    margin-bottom: 8px;
+}
+
 /* ==========================================================================
-   RETRO RDPlayer CSS (FIXED)
+   RETRO RDPlayer CSS
    ========================================================================== */
 .rdp {
     position: fixed; inset: 0; z-index: 5000;
-    background: #1a1a1a !important; /* Opaque background to hide app UI */
+    background: #1a1a1a !important; 
     display: flex; flex-direction: column;
     color: #e8ecef !important; font-family: Tahoma, Verdana, sans-serif !important;
     opacity: 0; pointer-events: none; transition: opacity 0.15s;
@@ -72,14 +92,12 @@ button,input,textarea,select{font-family:Tahoma,Verdana,sans-serif}
 }
 .rdp-img.ready { opacity: 1; }
 
-/* Video Wrapper - must be full size and relative for the play button to center */
 .rdp-vwrap { 
     width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; 
     position: relative; overflow: hidden;
 }
 .rdp-video { max-width: 100%; max-height: 100%; outline: none; }
 
-/* Retro Title Bar */
 .rdp-top {
     position: absolute; top: 0; left: 0; right: 0; padding: 4px 8px;
     background: linear-gradient(180deg, var(--t1), var(--t2), var(--t3)) !important;
@@ -92,7 +110,6 @@ button,input,textarea,select{font-family:Tahoma,Verdana,sans-serif}
 .rdp-sub { font-size: 10px; color: #eee !important; text-shadow: 1px 1px 0 rgba(0,0,0,.5); }
 .rdp-tools { display: flex; gap: 4px; align-items: center; }
 
-/* Retro Buttons */
 .rdp-btn {
     background: var(--btn) !important;
     border: 1px solid var(--bd-l) !important;
@@ -108,7 +125,6 @@ button,input,textarea,select{font-family:Tahoma,Verdana,sans-serif}
 .rdp-btn.on { background: var(--row-s) !important; color: var(--row-st) !important; }
 .rdp-btn.on svg { fill: var(--row-st) !important; }
 
-/* Retro Bar */
 .rdp-bar {
     position: absolute; bottom: 0; left: 0; right: 0; padding: 6px 10px;
     background: var(--win) !important; border-top: 2px solid var(--bd-l) !important;
@@ -138,14 +154,12 @@ button,input,textarea,select{font-family:Tahoma,Verdana,sans-serif}
 .rdp-vol { display: flex; align-items: center; gap: 4px; }
 .rdp-volr { width: 60px !important; accent-color: var(--t2) !important; cursor: pointer; }
 
-/* Retro Error Card */
 .rdp-err { position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.8); padding: 20px; }
 .rdp-card { background: var(--win) !important; border: 2px solid var(--bd) !important; border-radius: 0 !important; box-shadow: 2px 2px 0 #808080 !important; padding: 24px; max-width: 480px; text-align: center; }
 .rdp-card h3 { margin: 0 0 10px; color: var(--tx) !important; font-size: 14px !important; }
 .rdp-card p { margin: 0 0 20px; color: var(--tx-m) !important; font-size: 12px !important; }
 .rdp-ebtns { display: flex; gap: 10px; justify-content: center; }
 
-/* Retro Loading Bar */
 .rdp-load { position: absolute; inset: 0; z-index: 15; display: flex; align-items: center; justify-content: center; opacity: 0; pointer-events: none; transition: opacity 0.2s; background: rgba(0,0,0,0.5); }
 .rdp-load.on { opacity: 1; pointer-events: auto; }
 .rdp-spin {
@@ -162,7 +176,6 @@ button,input,textarea,select{font-family:Tahoma,Verdana,sans-serif}
 }
 @keyframes retro-bar { 0% { left: -40px; } 100% { left: 200px; } }
 
-/* Retro Navigation */
 .rdp-nav {
     position: absolute; top: 50%; transform: translateY(-50%);
     background: var(--win) !important; border: 2px solid var(--bd) !important;
@@ -176,7 +189,6 @@ button,input,textarea,select{font-family:Tahoma,Verdana,sans-serif}
 .rdp-prev { left: 0; border-radius: 0 4px 4px 0; }
 .rdp-next { right: 0; border-radius: 4px 0 0 4px; }
 
-/* Retro Toast */
 .rdp-toast {
     position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
     background: var(--win) !important; border: 1px solid var(--bd) !important;
@@ -186,18 +198,15 @@ button,input,textarea,select{font-family:Tahoma,Verdana,sans-serif}
 }
 .rdp-toast.show { opacity: 1; }
 
-/* Retro Help/Shortcuts */
 .rdp-help { position: absolute; inset: 0; z-index: 30; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; }
 .rdp-hcard { max-width: 500px; text-align: left; }
 .rdp-hgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; font-size: 12px; color: var(--tx) !important; margin-bottom: 16px; }
 .rdp-hgrid kbd { background: var(--btn) !important; border: 1px solid var(--bd) !important; color: var(--tx) !important; padding: 2px 6px; border-radius: 0 !important; font-family: monospace; }
 .rdp-hfoot { text-align: center; font-size: 11px; color: var(--tx-m) !important; }
 
-/* Misc Retro Details */
 .rdp.idle .rdp-top, .rdp.idle .rdp-bar, .rdp.idle .rdp-nav { opacity: 0; pointer-events: none; }
 .rdp-stage.audioonly video { display: none; }
 
-/* Big Play Button FIX: hidden by default, shown only when paused */
 .rdp-bigplay { 
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0.8); 
     opacity: 0; pointer-events: none; transition: opacity 0.2s, transform 0.2s; 

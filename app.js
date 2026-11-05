@@ -1826,34 +1826,159 @@
         p.addEventListener('icegatheringstatechange', f);
         setTimeout(res, 5000);
     });
-    const rtcStatus = m => { $('#webrtcStatus').textContent = m; stat(m); };
+    
+    const rtcStatus = m => { 
+        $('#webrtcStatus').textContent = m; 
+        stat(m); 
+        // Enable send button only if connected
+        $('#webrtcSend').disabled = (!dc || dc.readyState !== 'open');
+    };
+
+    const updateWrtcProgress = (percent, name) => {
+        const wrap = $('#webrtcProgressWrap');
+        const bar = $('#webrtcProgressBar');
+        if (percent === 0) { wrap.style.display = 'none'; return; }
+        wrap.style.display = 'block';
+        bar.style.width = percent + '%';
+        if (name) rtcStatus(`Transferring: ${name} (${Math.round(percent)}%)`);
+    };
 
     const setupChannel = ch => {
         dc = ch; ch.binaryType = 'arraybuffer';
-        ch.onopen = () => rtcStatus('Peer connected. Select files and press "Send Selected Files".');
-        ch.onclose = () => rtcStatus('Peer disconnected.');
+        ch.onopen = () => {
+            rtcStatus('Connected. Ready to transfer.');
+            $('#webrtcSend').disabled = false;
+            $('#webrtcApply').disabled = true;
+        };
+        ch.onclose = () => {
+            rtcStatus('Connection closed.');
+            $('#webrtcSend').disabled = true;
+        };
         ch.onmessage = async e => {
             if (typeof e.data === 'string') {
                 let m; try { m = JSON.parse(e.data); } catch (x) { return; }
-                if (m.t === 'file') { rx = { name: String(m.name || 'file'), mime: String(m.mime || ''), size: Number(m.size) || 0, parts: [], got: 0 }; rtcStatus('Receiving ' + rx.name + '…'); }
+                if (m.t === 'file') { 
+                    rx = { name: String(m.name || 'file'), mime: String(m.mime || ''), size: Number(m.size) || 0, parts: [], got: 0 }; 
+                    updateWrtcProgress(1, rx.name);
+                }
                 else if (m.t === 'end' && rx) {
                     const f = rx; rx = null;
+                    updateWrtcProgress(0);
                     if (f.got !== f.size) return rtcStatus('Transfer of ' + f.name + ' was incomplete.');
                     try {
                         await add(new File(f.parts, f.name, { type: f.mime }), st.cwd === TRASH ? R : st.cwd, null);
-                        await refresh(); rtcStatus('Received ' + f.name);
+                        await refresh(); 
+                        rtcStatus('Received ' + f.name);
                     } catch (x) { rtcStatus('Could not save ' + f.name + ': ' + x.message); }
                 }
-            } else if (rx) { rx.parts.push(e.data); rx.got += e.data.byteLength; }
+            } else if (rx) { 
+                rx.parts.push(e.data); 
+                rx.got += e.data.byteLength; 
+                const pct = (rx.got / rx.size) * 100;
+                if (Math.random() < 0.1) updateWrtcProgress(pct, rx.name); // Throttle updates
+            }
         };
     };
+
     const newPC = () => {
         if (pc) { try { pc.close(); } catch (e) { } }
         pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
         pc.ondatachannel = e => setupChannel(e.channel);
-        pc.onconnectionstatechange = () => { if (pc && pc.connectionState === 'failed') rtcStatus('Connection failed.'); };
+        pc.onconnectionstatechange = () => { 
+            if (pc && pc.connectionState === 'failed') rtcStatus('Connection failed. Network blocked?'); 
+            if (pc && pc.connectionState === 'disconnected') rtcStatus('Disconnected.');
+        };
     };
-    const parseSDP = () => { try { return JSON.parse($('#webrtcInput').value.trim()); } catch (e) { rtcStatus('That is not a valid offer/answer.'); return null; } };
+    
+    const parseSDP = () => { 
+        try { return JSON.parse($('#webrtcInput').value.trim()); } 
+        catch (e) { rtcStatus('That is not a valid code.'); return null; } 
+    };
+
+    // ---------- event wiring (WebRTC) ----------
+    const bindWebRTC = () => {
+        $('#webrtcClose').onclick = $('#webrtcOk').onclick = () => {
+            $('#webrtc-modal').hidden = true;
+            if (pc) { try { pc.close(); } catch(e){} pc = null; }
+            if (dc) { try { dc.close(); } catch(e){} dc = null; }
+            rtcStatus('Not connected.');
+            $('#webrtcProgressWrap').style.display = 'none';
+        };
+
+        $('#webrtcCopy').onclick = () => {
+            const t = $('#webrtcOutput');
+            if (!t.value) return;
+            t.select();
+            document.execCommand('copy');
+            const old = $('#webrtcCopy').textContent;
+            $('#webrtcCopy').textContent = 'Copied!';
+            setTimeout(() => $('#webrtcCopy').textContent = old, 1500);
+        };
+
+        $('#webrtcGenerate').onclick = async () => {
+            try {
+                newPC(); 
+                setupChannel(pc.createDataChannel('file'));
+                await pc.setLocalDescription(await pc.createOffer());
+                rtcStatus('Gathering network info...'); 
+                await waitIce(pc);
+                $('#webrtcOutput').value = JSON.stringify(pc.localDescription);
+                rtcStatus('Offer ready. Send your code to the receiver.');
+                $('#webrtcApply').disabled = false;
+            } catch (e) { rtcStatus('Error: ' + e.message); }
+        };
+        
+        $('#webrtcAccept').onclick = async () => {
+            const offerSdp = parseSDP(); if (!offerSdp) return;
+            try {
+                newPC();
+                await pc.setRemoteDescription(offerSdp);
+                await pc.setLocalDescription(await pc.createAnswer());
+                rtcStatus('Gathering network info...'); 
+                await waitIce(pc);
+                $('#webrtcOutput').value = JSON.stringify(pc.localDescription);
+                rtcStatus('Answer ready. Send it back to the host.');
+            } catch (e) { rtcStatus('Error: ' + e.message); }
+        };
+        
+        $('#webrtcApply').onclick = async () => {
+            const ans = parseSDP(); if (!ans) return;
+            if (!pc) return rtcStatus('Create an offer first.');
+            try { 
+                await pc.setRemoteDescription(ans); 
+                rtcStatus('Connecting...'); 
+            } catch (e) { rtcStatus('Error: ' + e.message); }
+        };
+        
+        $('#webrtcSend').onclick = async () => {
+            if (!dc || dc.readyState !== 'open') return rtcStatus('Not connected yet.');
+            const fs = selNodes().filter(i => i.kind === 'file' && !i.isUploading);
+            if (!fs.length) return rtcStatus('Select one or more finished files first.');
+            
+            $('#webrtcSend').disabled = true;
+            for (const n of fs) {
+                const r = await openNode(n); if (!r) continue;
+                const b = r.blob;
+                
+                dc.send(JSON.stringify({ t: 'file', name: n.name, mime: n.mime, size: b.size }));
+                
+                const chunkSize = 16384;
+                for (let o = 0; o < b.size; o += chunkSize) {
+                    while (dc.bufferedAmount > 1048576) await sleep(20);
+                    dc.send(await b.slice(o, o + chunkSize).arrayBuffer());
+                    
+                    if ((o / chunkSize) % 64 === 0) {
+                        updateWrtcProgress((o / b.size) * 100, n.name);
+                    }
+                }
+                dc.send(JSON.stringify({ t: 'end' }));
+                rtcStatus('Sent ' + n.name);
+            }
+            updateWrtcProgress(0);
+            rtcStatus('All files sent.');
+            $('#webrtcSend').disabled = false;
+        };
+    };
 
     // ---------- steganography ----------
     const lsbIdx = k => ((k / 3) | 0) * 4 + (k % 3);
@@ -1912,6 +2037,8 @@
     const imp = fs => importItems(fs.map(f => ({ dirs: [], file: f })));
 
     const bind = () => {
+        bindWebRTC();
+
         $('#btnFullscreen').onclick = toggleFullscreen;
 
         $('#menubar').addEventListener('click', e => {
@@ -2167,50 +2294,6 @@
         $('#aboutTabs').onclick = e => { const b = e.target.closest('.about-tab'); if (b) showAbout(b.dataset.tab); };
         $('#propClose').onclick = $('#propOk').onclick = () => { $('#prop-modal').hidden = true; };
         $('#imgClose').onclick = closeImgEditor;
-        $('#webrtcClose').onclick = $('#webrtcOk').onclick = () => { $('#webrtc-modal').hidden = true; };
-
-        $('#webrtcGenerate').onclick = async () => {
-            try {
-                newPC(); setupChannel(pc.createDataChannel('file'));
-                await pc.setLocalDescription(await pc.createOffer());
-                rtcStatus('Gathering network info…'); await waitIce(pc);
-                $('#webrtcOutput').value = JSON.stringify(pc.localDescription);
-                rtcStatus('Offer ready. Send it to the receiver, then paste their answer above and press "Apply Answer".');
-            } catch (e) { rtcStatus('WebRTC error: ' + e.message); }
-        };
-        $('#webrtcAccept').onclick = async () => {
-            const offerSdp = parseSDP(); if (!offerSdp) return;
-            try {
-                newPC();
-                await pc.setRemoteDescription(offerSdp);
-                await pc.setLocalDescription(await pc.createAnswer());
-                rtcStatus('Gathering network info…'); await waitIce(pc);
-                $('#webrtcOutput').value = JSON.stringify(pc.localDescription);
-                rtcStatus('Answer ready. Send it back to the host.');
-            } catch (e) { rtcStatus('WebRTC error: ' + e.message); }
-        };
-        $('#webrtcApply').onclick = async () => {
-            const ans = parseSDP(); if (!ans) return;
-            if (!pc) return rtcStatus('Generate an offer first.');
-            try { await pc.setRemoteDescription(ans); rtcStatus('Connecting…'); } catch (e) { rtcStatus('WebRTC error: ' + e.message); }
-        };
-        $('#webrtcSend').onclick = async () => {
-            if (!dc || dc.readyState !== 'open') return rtcStatus('Not connected yet.');
-            const fs = selNodes().filter(i => i.kind === 'file' && !i.isUploading);
-            if (!fs.length) return rtcStatus('Select one or more finished files in the main window first.');
-            for (const n of fs) {
-                const r = await openNode(n); if (!r) continue;
-                const b = r.blob;
-                dc.send(JSON.stringify({ t: 'file', name: n.name, mime: n.mime, size: b.size }));
-                for (let o = 0; o < b.size; o += 16384) {
-                    while (dc.bufferedAmount > 1048576) await sleep(20);
-                    dc.send(await b.slice(o, o + 16384).arrayBuffer());
-                    if ((o / 16384) % 64 === 0) rtcStatus(`Sending ${n.name}: ${Math.round(o / b.size * 100)}%`);
-                }
-                dc.send(JSON.stringify({ t: 'end' }));
-                rtcStatus('Sent ' + n.name);
-            }
-        };
 
         $('#stegClose').onclick = $('#stegOk').onclick = () => { $('#steg-modal').hidden = true; };
         $('#stegHide').onclick = async () => {
